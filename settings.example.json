@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "BRAIN_VAULT_PATH=\"/ABSOLUTE/PATH/TO/YOUR/Brain\" python3 \"/ABSOLUTE/PATH/TO/.claude/hooks/brain_context.py\"",
+            "statusMessage": "Loading Brain...",
+            "once": true
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"/ABSOLUTE/PATH/TO/brain-os-starter/hooks/rules.py\"",
+            "statusMessage": "Loading rules...",
+            "once": true
+          }
+        ]
+      }
+    ]
+  }
+}

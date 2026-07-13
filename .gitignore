@@ -1,0 +1,11 @@
+# The runtime store is machine-local and disposable — never commit it.
+.brain-runtime/
+# Python bytecode
+__pycache__/
+*.pyc
+# OS / editor cruft
+.DS_Store
+.obsidian/
+.trash/
+# settings backups created by install.sh
+*.bak-brain-install
