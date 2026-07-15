@@ -71,8 +71,8 @@ for keyword lines of the form `- [[target]] — kw1, kw2`). Don't rename those.
   irreversible actions, secret hygiene, test ordering, token economy, memory
   discipline. Edit this to fit your team.
 - **learning loop** (PROTOCOL §3) — Session → Lesson → (useful in 2+ tasks) → a
-  promoted heuristic or Skill. Invalidated entries are deleted. Pruning is
-  maintenance, not loss.
+  promoted heuristic or Skill. Invalidated entries are suppressed/archived, not
+  deleted. Pruning is maintenance, not loss.
 
 ## 5. The Living Brain cognitive layer (`vault-template/AI/`)
 
@@ -96,7 +96,21 @@ suppression/pruning. Run `python3 brain_engine.py` for a 5/5 self-test. It is
 **not** wired to any hook — it's the substrate you build session tooling on, and
 running it changes nothing about a live session by itself.
 
-## 6. File map
+## 6. Optional: the MCP server as a vault gateway
+
+Everything above assumes the session hooks reading a local vault. `mcp/` adds an
+**optional** gateway onto the Durable Brain layer for remote or multi-client
+access — one central vault, many callers — without changing anything for a purely
+local agent. It exposes the same OKF vault as MCP tools: read tools
+(`get_dashboard`, `get_concept`, `search`, …) are open and side-effect-free,
+while writes go through the gated pipeline (single-writer lock →
+frontmatter validation → secret gate → edit → triple update → authored git
+commit) and there is deliberately no delete tool. This preserves the boundaries
+from §8: single writer, vault as source of truth, no live sync. It runs on
+`fastmcp` over HTTP with bearer-token auth; the stdlib-only `core.py` holds the
+logic and is testable on its own. Details in `mcp/README.md`.
+
+## 7. File map
 
 ```
 brain-os-starter/
@@ -125,7 +139,7 @@ brain-os-starter/
         └── Skills/reasoning-core/SKILL.md   (canonical copy in the vault)
 ```
 
-## 7. Deliberate boundaries (v1)
+## 8. Deliberate boundaries (v1)
 
 - **No bidirectional sync.** The vault is the single source of truth; distribute it
   as a git repo or a tarball, not a live-synced drive.

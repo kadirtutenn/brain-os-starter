@@ -1,0 +1,18 @@
+# brain-mcp server dependencies.
+#
+# These are needed ONLY for the optional MCP server component (mcp/server.py).
+# The core logic (mcp/core.py) and the session hooks are stdlib-only and need
+# NOTHING from this file — you can run the whole Brain OS without installing it.
+#
+# Install into a dedicated virtualenv:
+#   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
+
+# MCP server framework — declares tools, handles the protocol, serves HTTP.
+# 3.x is required: server.py uses the streamable-HTTP transport (transport="http");
+# the old "sse" transport was removed in FastMCP 3. Verified against fastmcp 3.4.
+fastmcp>=3,<4
+
+# ASGI runner for the streamable-HTTP transport the server exposes.
+# fastmcp can start uvicorn itself, but pin it here so the service user has a
+# known-good version available.
+uvicorn>=0.30

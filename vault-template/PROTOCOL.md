@@ -47,7 +47,7 @@ Knowledge is distilled in one direction; each level feeds the next:
 ```
 Session (raw event) → Lesson (## slug: one rule) → useful in 2+ tasks
   → promote: a heuristic in reasoning-core memory OR a section in the relevant Skill/Knowledge file
-  → an invalidated lesson/heuristic is DELETED (pruning = maintenance, not loss)
+  → an invalidated lesson/heuristic is SUPPRESSED/ARCHIVED, not deleted (pruning = maintenance, not loss)
 ```
 
 - After each major task, a retrospective: a Task Log entry in

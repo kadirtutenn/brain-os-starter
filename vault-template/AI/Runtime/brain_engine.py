@@ -37,8 +37,8 @@ POSITIVE = {"base_activation", "semantic_similarity", "tag_match", "description_
             "coactivation_signal", "reliability_signal", "novelty_signal"}
 
 # ---- progressive retrieval thresholds ----
-THRESHOLDS = {"ignore_below": 0.35, "frontmatter": 0.50, "matching_section": 0.65,
-              "adjacent_sections": 0.78, "full_concept": 0.88}
+THRESHOLDS = {"ignore_below": 0.35, "index_only": 0.35, "frontmatter": 0.50,
+              "matching_section": 0.65, "adjacent_sections": 0.78, "full_concept": 0.88}
 
 # ---- plasticity ----
 PLASTICITY = {"positive_lr": 0.10, "negative_lr": 0.14, "coactivation_lr": 0.03,
@@ -134,6 +134,8 @@ def retrieval_level(a, dynamic_adjust=0.0):
     a = a - dynamic_adjust
     if a < THRESHOLDS["ignore_below"]:
         return "ignore"
+    if a < THRESHOLDS["frontmatter"]:
+        return "index_only"
     if a < THRESHOLDS["matching_section"]:
         return "frontmatter"
     if a < THRESHOLDS["adjacent_sections"]:
@@ -284,6 +286,11 @@ def selftest():
         dropped = all(x["ref"] != "lo#c" for x in ret)
         ok2 = (hi > lo and 0.0 <= hi <= 1.0 and full_ct <= 1 and dropped)
         results.append(("Phase2 activation ranking + full-concept<=1 + low-score drop", ok2))
+
+        ok2b = (retrieval_level(0.40) == "index_only"
+                and retrieval_level(0.34) == "ignore"
+                and retrieval_level(0.50) == "frontmatter")
+        results.append(("Phase2 index_only tier for activation in [0.35,0.50)", ok2b))
 
         # Phase 3
         dec = open_decision({"decision_id": "d1", "prediction": {"success_probability": 0.75}})

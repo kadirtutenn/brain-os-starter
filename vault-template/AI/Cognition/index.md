@@ -1,12 +1,3 @@
----
-type: Knowledge
-description: AI/Cognition directory index — progressive-retrieval router for the Living Brain cognitive modules.
-tags: [living-brain, cognition, index]
-timestamp: 2026-01-01
-status: active
-version: 0.1
----
-
 # AI/Cognition — Index
 
 The Living Brain v0.1 cognitive layer. Core: [[cognitive-architecture]].

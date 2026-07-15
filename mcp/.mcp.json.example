@@ -1,0 +1,22 @@
+{
+  "//": "Example MCP client registration for the optional brain-mcp server.",
+  "//1": "Copy the relevant block into your client's MCP config (for Claude Code:",
+  "//2": "a project .mcp.json, or ~/.claude.json). Replace <VAULT_URL> with the",
+  "//3": "server's streamable-HTTP endpoint and <BEARER_TOKEN> with one of the",
+  "//4": "tokens listed in BRAIN_MCP_TOKENS on the server (see systemd/brain-mcp.service).",
+  "//5": "",
+  "//6": "Equivalent one-liner using the Claude CLI:",
+  "//7": "  claude mcp add brain-mcp <VAULT_URL> --header \"Authorization: Bearer <BEARER_TOKEN>\"",
+  "//8": "",
+  "//9": "A typical <VAULT_URL> looks like: https://brain.example.com/mcp",
+
+  "mcpServers": {
+    "brain-mcp": {
+      "type": "http",
+      "url": "<VAULT_URL>",
+      "headers": {
+        "Authorization": "Bearer <BEARER_TOKEN>"
+      }
+    }
+  }
+}

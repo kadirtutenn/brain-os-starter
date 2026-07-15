@@ -3,6 +3,8 @@
 # Python bytecode
 __pycache__/
 *.pyc
+# MCP server virtualenv created by mcp/install.sh
+.venv/
 # OS / editor cruft
 .DS_Store
 .obsidian/

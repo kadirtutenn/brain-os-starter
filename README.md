@@ -49,6 +49,7 @@ See `ARCHITECTURE.md` for the full model.
 | `scripts/new_vault.sh` | Scaffold a fresh vault from the template. |
 | `scripts/install.sh` | Wire everything into ~/.claude (hooks, skill, agents, settings). |
 | `settings.example.json` | Reference settings.json hook wiring. |
+| `mcp/` | Optional MCP server exposing one central vault to remote/multi-client agents. |
 
 ## Quick start
 
@@ -65,6 +66,22 @@ BRAIN_VAULT_PATH="$HOME/Brain" ./scripts/install.sh
 ```
 
 Full walk-through, prerequisites, and manual setup: see `INSTALL.md`.
+
+## Optional: central vault over MCP
+
+The hooks above serve a local vault. When you instead want *remote* or
+*multi-client* access to one shared vault — a team on a VPS, say — there is an
+optional MCP server in `mcp/`. It exposes the same OKF vault as callable tools
+(open read tools; writes through a gated single-writer pipeline). One command
+from the repo root brings it up:
+
+```sh
+mcp/install.sh --run        # foreground, needs BRAIN_VAULT_PATH
+sudo mcp/install.sh --systemd   # install + start as a VPS daemon
+```
+
+It is entirely optional and separate from the hooks — a single local agent needs
+none of it. See `mcp/README.md` for the tool list, auth, and deploy details.
 
 ## Design credits
 

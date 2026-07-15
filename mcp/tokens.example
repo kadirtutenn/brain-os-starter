@@ -1,0 +1,10 @@
+# Brain MCP bearer tokens — copy to a private file and point
+# BRAIN_MCP_TOKENS at it. One credential per line:
+#
+#     <token>:<username>:<role>       role in {user, admin}
+#
+# Generate real tokens yourself (e.g. `python -c "import secrets;
+# print(secrets.token_urlsafe(32))"`) and NEVER commit them. Blank lines
+# and lines starting with "#" are ignored.
+REPLACE-WITH-A-RANDOM-TOKEN-1:alice:user
+REPLACE-WITH-A-RANDOM-TOKEN-2:bob:admin

@@ -77,6 +77,36 @@ If you prefer to wire it by hand, add two `UserPromptSubmit` hooks to
 Then copy `skills/reasoning-core/` into `~/.claude/skills/` and `agents/*.md` into
 `~/.claude/agents/`.
 
+## Central vault + MCP server (optional)
+
+Everything above wires a *local* vault into one machine. If you instead want a
+single shared vault reachable by remote or multiple clients (a team on a VPS),
+run the optional MCP server in `mcp/`. It is independent of the hooks.
+
+Bring it up from the repo root:
+
+```sh
+# local / foreground — installs a venv + deps, then runs it
+BRAIN_VAULT_PATH="$HOME/Brain" mcp/install.sh --run
+
+# VPS daemon — installs deps and registers + starts a systemd service
+sudo mcp/install.sh --systemd
+```
+
+`mcp/install.sh` with no flag just prepares the virtualenv and dependencies.
+Configure tokens and the listener via the environment file / `BRAIN_MCP_TOKENS`
+as documented in `mcp/README.md`.
+
+Then register the endpoint with any MCP client:
+
+```sh
+claude mcp add brain-mcp <url> --header "Authorization: Bearer <token>"
+```
+
+where `<url>` is the server endpoint (e.g. `https://brain.example.com/mcp`) and
+`<token>` is one of your configured bearer tokens. Full tool list, auth model,
+and deploy hardening: `mcp/README.md`.
+
 ## Turning it off
 
 - Mute the rules injection for a session: `BRAIN_RULES_BYPASS=1` (rules stay in

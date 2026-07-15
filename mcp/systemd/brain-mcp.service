@@ -1,0 +1,64 @@
+# brain-mcp.service — run the optional Brain OS MCP server as a system daemon.
+#
+# This unit is generic. Replace the placeholders below, then:
+#   sudo cp mcp/systemd/brain-mcp.service /etc/systemd/system/brain-mcp.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now brain-mcp.service
+#   systemctl status brain-mcp.service
+#
+# The environment file holds all deployment-specific values so this unit stays
+# secret-free and portable. Create /etc/brain-mcp.env (chmod 600, owned by the
+# service user) with at least:
+#
+#   BRAIN_VAULT_PATH=/srv/brain/vault
+#   BRAIN_MCP_TOKENS=token-for-alice:alice,token-for-bob:bob
+#   BRAIN_MCP_HOST=127.0.0.1
+#   BRAIN_MCP_PORT=8080
+#
+# BRAIN_MCP_TOKENS maps bearer tokens to author identities; the server rejects
+# any request whose Authorization: Bearer <token> is not listed. Keep the host
+# on loopback and put a TLS-terminating reverse proxy in front for public access.
+
+[Unit]
+Description=Brain OS MCP server (OKF vault gateway)
+Documentation=file:///srv/brain/brain-os-starter/mcp/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+
+# Dedicated, unprivileged service account — create it once with:
+#   sudo useradd --system --home /srv/brain --shell /usr/sbin/nologin brainmcp
+# and make sure it owns the vault and the venv.
+User=brainmcp
+Group=brainmcp
+
+# Absolute path to the checkout that contains the mcp/ directory.
+WorkingDirectory=/srv/brain/brain-os-starter
+
+# All tunables live here, not in the unit. Secrets never touch the repo.
+EnvironmentFile=/etc/brain-mcp.env
+
+# Run the server script from the project virtualenv. server.py puts its own
+# directory on sys.path (so it is NOT imported as a package named "mcp", which
+# would shadow the PyPI `mcp` SDK). It reads BRAIN_VAULT_PATH, BRAIN_MCP_TOKENS,
+# BRAIN_MCP_HOST and BRAIN_MCP_PORT from the environment file above.
+# mcp/install.sh --systemd fills these paths in for you.
+ExecStart=/srv/brain/brain-os-starter/.venv/bin/python /srv/brain/brain-os-starter/mcp/server.py
+
+Restart=on-failure
+RestartSec=5
+
+# Hardening — the server only ever needs to read/write the vault directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/brain/vault
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target
