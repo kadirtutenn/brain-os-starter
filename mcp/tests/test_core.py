@@ -41,9 +41,8 @@ def test_find_concept_ranks_frontmatter_match_above_body_match(vault):
     note = next(i for i in ids if i.endswith("sample.md"))
     assert ids.index(skill) < ids.index(note)
 
-    # scores are present, descending, and the top match is the frontmatter one.
-    scores = [r["score"] for r in results]
-    assert scores == sorted(scores, reverse=True)
+    # results are ranked most-relevant first (the internal score is not
+    # exposed by contract), so the frontmatter match must be at the top.
     assert results[0]["id"].endswith("example-skill.md")
 
 
