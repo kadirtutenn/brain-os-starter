@@ -1,7 +1,7 @@
 # auth.py — bearer-token authentication for the Brain MCP server.
 #
-# Tokens live in a plaintext file whose path comes from the BRAIN_MCP_TOKENS
-# environment variable. One credential per line:
+# Tokens live in a plaintext file whose path comes from BRAIN_TOKEN_FILE.
+# BRAIN_MCP_TOKENS remains a deprecated compatibility alias. One credential per line:
 #
 #     <token>:<username>:<role>
 #
@@ -13,6 +13,7 @@
 # identity dict {"name", "email", "is_admin"} that the write tools pass on
 # to mcp.core as `author`. Unknown or malformed credentials raise AuthError.
 import os
+import hmac
 
 VALID_ROLES = {"user", "admin"}
 DEFAULT_EMAIL_DOMAIN = "example.com"
@@ -23,9 +24,9 @@ class AuthError(Exception):
 
 
 def _tokens_path():
-    path = os.environ.get("BRAIN_MCP_TOKENS")
+    path = os.environ.get("BRAIN_TOKEN_FILE") or os.environ.get("BRAIN_MCP_TOKENS")
     if not path:
-        raise AuthError("BRAIN_MCP_TOKENS is not set")
+        raise AuthError("BRAIN_TOKEN_FILE is not set")
     return path
 
 
@@ -78,7 +79,8 @@ def authenticate(bearer, path=None):
     """
     token = _strip_bearer(bearer)
     table = load_tokens(path)
-    entry = table.get(token)
+    entry = next((value for candidate, value in table.items()
+                  if hmac.compare_digest(candidate, token)), None)
     if entry is None:
         raise AuthError("unknown token")
     username, role = entry
@@ -86,4 +88,41 @@ def authenticate(bearer, path=None):
         "name": username,
         "email": "%s@%s" % (username, DEFAULT_EMAIL_DOMAIN),
         "is_admin": role == "admin",
+        "caller_id": username,
+        "agent_id": username,
+        "permissions": ["read", "write"] + (["admin"] if role == "admin" else []),
     }
+
+
+def build_token_verifier():
+    """Build a FastMCP-compatible, dynamically reloading opaque-token verifier.
+
+    Imports are intentionally lazy so the stdlib core/auth tests do not require
+    the optional MCP transport dependencies.
+    """
+    from fastmcp.server.auth import AccessToken, TokenVerifier
+
+    class ReloadingTokenVerifier(TokenVerifier):
+        def __init__(self):
+            super().__init__(required_scopes=["read"])
+
+        async def verify_token(self, token):
+            try:
+                identity = authenticate(token)
+            except AuthError:
+                return None
+            return AccessToken(
+                token=token,
+                client_id=identity["caller_id"],
+                subject=identity["agent_id"],
+                scopes=identity["permissions"],
+                claims={
+                    "name": identity["name"],
+                    "email": identity["email"],
+                    "is_admin": identity["is_admin"],
+                    "caller_id": identity["caller_id"],
+                    "agent_id": identity["agent_id"],
+                },
+            )
+
+    return ReloadingTokenVerifier()

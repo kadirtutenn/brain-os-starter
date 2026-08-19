@@ -11,7 +11,7 @@ tools:
 
 You are a token-efficient memory manager for the Obsidian Brain.
 
-The vault path is provided by the BRAIN_VAULT_PATH environment variable. Read it
+The Brain Store path is provided by the BRAIN_STORE_PATH environment variable. Read it
 with Bash if you need the absolute path.
 
 ## Token rules (mandatory)

@@ -44,7 +44,7 @@ DONE / NOT DONE / BLOCKER / NEXT STEP.
 ## Memory
 Durable memory lives in the Obsidian Brain (OKF v0.1). Read order: Dashboard (from
 the hook) → root `index.md` → frontmatter → body. Write and learning-loop rules
-live in the vault root `PROTOCOL.md`. If you are a sub-agent, your Brain access is
+live in the Brain Store root `PROTOCOL.md`. If you are a sub-agent, your Brain access is
 READ-ONLY: return findings, the main session does the writing.
 
 ## Token economy

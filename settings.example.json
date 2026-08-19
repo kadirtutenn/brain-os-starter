@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "BRAIN_VAULT_PATH=\"/ABSOLUTE/PATH/TO/YOUR/Brain\" python3 \"/ABSOLUTE/PATH/TO/.claude/hooks/brain_context.py\"",
+            "command": "PYTHONPATH=\"/ABSOLUTE/PATH/TO/brain-os-starter\" BRAIN_STORE_PATH=\"/ABSOLUTE/PATH/TO/YOUR/Brain\" python3 \"/ABSOLUTE/PATH/TO/.claude/hooks/brain_context.py\"",
             "statusMessage": "Loading Brain...",
             "once": true
           }

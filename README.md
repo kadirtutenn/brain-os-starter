@@ -1,91 +1,92 @@
 # Brain OS Starter
 
-A portable memory + reasoning operating system for AI coding agents (Claude Code
-and any Agent SDK / API agent), built on an [Obsidian](https://obsidian.md) vault
-and a small set of session hooks.
+Brain OS is deterministic shared-memory infrastructure for multiple external AI
+agents. It stores durable knowledge as OKF Markdown and returns compact,
+budgeted context through SQLite FTS5, sparse technical-token ranking,
+fingerprints, and caller-scoped context receipts.
 
-It gives an agent three things:
+Brain OS is not an AI runtime. The core does not call an LLM, embedding model,
+reranker, summarizer, or external AI API. External agents do the semantic work;
+Brain OS parses, indexes, ranks, packs, versions, and serves shared knowledge.
 
-1. **A durable, human-readable memory** — an OKF v0.1 markdown bundle you can open
-   in Obsidian and browse as a knowledge graph.
-2. **Automatic context injection** — a hook that, on every prompt, injects the
-   Dashboard, the most relevant distilled lessons, and the best-matching concept
-   — without you pasting anything.
-3. **A reasoning + learning discipline** — a `reasoning-core` skill (how to work),
-   a working-rules layer (what's allowed), and a session→lesson→skill learning
-   loop that makes the memory better over time.
+## Architecture
 
-Everything here is generic. There is no company, project, or personal data — swap
-in your own as you use it.
-
-## The three layers
-
-```
-Durable Brain            The Obsidian vault (this is your memory; git-tracked, markdown).
-   +
-Runtime Mind             Transient per-session cognition in ~/.brain-runtime/ (never
-                         committed; rebuildable). Driven by AI/Runtime/brain_engine.py.
-   +
-Offline Consolidation    At session end, brain-manager distills the session into
-                         lessons and updates the Dashboard/index/log.
-```
-
-The guiding principle: **a big Brain is not a big context.** The memory can grow
-without bound; what gets loaded into any one prompt stays small and task-shaped.
-See `ARCHITECTURE.md` for the full model.
-
-## What's in this repo
-
-| Path | What it is |
+| Path | Responsibility |
 |---|---|
-| `vault-template/` | The Brain skeleton — copy this to create a fresh vault. |
-| `hooks/brain_context.py` | UserPromptSubmit hook: injects Dashboard + lessons + best concept. |
-| `hooks/rules.py` | UserPromptSubmit hook: injects your working rules. |
-| `rules/working-rules.md` | The team working-rules template (edit to taste). |
-| `skills/reasoning-core/SKILL.md` | The reasoning discipline skill (installed to ~/.claude/skills). |
-| `agents/` | `brain-manager` and `context-builder` agent definitions. |
-| `okf/okf-spec-v0.1.md` | The knowledge-format spec the vault follows. |
-| `system-prompt.md` | Canonical system prompt for API/SDK agents. |
-| `scripts/new_vault.sh` | Scaffold a fresh vault from the template. |
-| `scripts/install.sh` | Wire everything into ~/.claude (hooks, skill, agents, settings). |
-| `settings.example.json` | Reference settings.json hook wiring. |
-| `mcp/` | Optional MCP server exposing one central vault to remote/multi-client agents. |
+| `brain-store/` | Durable source of truth: Projects, Agents, Knowledge, Lessons, Skills, Insights, Sessions, tasks, protocol, indexes, and log. |
+| `runtime/` | Deterministic parser, structure-first chunker, FTS5 index, BrainVector sparse features, hybrid ranking, caches, receipts, telemetry, and CLI. |
+| `cognitive-spec/` | Contracts for retrieval, memory, learning, context, and task/session state. |
+| `mcp/` | Bearer-protected FastMCP transport and gated Store writes. |
+| `deployment/` | Docker Compose, Openship contract, health checks, VPS migration, backup, and smoke test. |
+
+SQLite state is a disposable projection. OKF frontmatter and Markdown in the
+Brain Store remain the only durable metadata authority.
 
 ## Quick start
 
 ```sh
-# 1. Scaffold a vault (choose any empty path)
-./scripts/new_vault.sh "$HOME/Brain"
+# Create a new Brain Store without overwriting an existing directory.
+./scripts/new_store.sh "$HOME/Brain"
 
-# 2. Wire it into Claude Code (installs hooks, skill, agents; backs up settings.json)
-BRAIN_VAULT_PATH="$HOME/Brain" ./scripts/install.sh
+# Build and verify the deterministic retrieval projection.
+BRAIN_STORE_PATH="$HOME/Brain" ./brain index rebuild
+BRAIN_STORE_PATH="$HOME/Brain" ./brain index verify
 
-# 3. Open "$HOME/Brain" in Obsidian to get the graph view.
-# 4. Start a new Claude Code session — the first prompt shows
-#    "--- Brain Dashboard ---" and "--- Working Rules ---" context blocks.
+# Retrieve compact context under a provider-independent budget.
+BRAIN_STORE_PATH="$HOME/Brain" ./brain context \
+  "current API decision and relevant lessons" --max-context-units 800
+
+# Install the local Claude Code hook/skill/agents.
+BRAIN_STORE_PATH="$HOME/Brain" ./scripts/install.sh
 ```
 
-Full walk-through, prerequisites, and manual setup: see `INSTALL.md`.
+`BRAIN_STORE_PATH` is canonical. `BRAIN_VAULT_PATH` is accepted temporarily as
+a deprecated compatibility alias.
 
-## Optional: central vault over MCP
-
-The hooks above serve a local vault. When you instead want *remote* or
-*multi-client* access to one shared vault — a team on a VPS, say — there is an
-optional MCP server in `mcp/`. It exposes the same OKF vault as callable tools
-(open read tools; writes through a gated single-writer pipeline). One command
-from the repo root brings it up:
+## Retrieval maintenance
 
 ```sh
-mcp/install.sh --run        # foreground, needs BRAIN_VAULT_PATH
-sudo mcp/install.sh --systemd   # install + start as a VPS daemon
+./brain index status
+./brain index refresh
+./brain index rebuild
+./brain index migrate
+./brain index verify
+./brain evaluate evaluation/retrieval-golden.json
 ```
 
-It is entirely optional and separate from the hooks — a single local agent needs
-none of it. See `mcp/README.md` for the tool list, auth, and deploy details.
+The default local database is `~/.brain-runtime/retrieval.sqlite`. Override
+rebuildable and disposable paths with `BRAIN_RUNTIME_PATH` and
+`BRAIN_CACHE_PATH`.
 
-## Design credits
+## MCP
 
-The knowledge format is [OKF v0.1](okf/okf-spec-v0.1.md). The cognitive layer
-(`vault-template/AI/`) is a "Living Brain v0.1" design: a small runtime engine plus
-markdown policy files describing perception, salience, a global workspace, goals,
-decisions, future simulation, world/self models, metacognition, and consolidation.
+The primary read primitives are `brain_context`, `brain_continue`, and
+`brain_expand`. Low-level search/get tools remain for compatibility and
+debugging. Every MCP request is transport-authenticated from the dynamically
+reloaded token file; caller identity becomes provenance without storing raw
+tokens.
+
+```sh
+BRAIN_STORE_PATH="$HOME/Brain" \
+BRAIN_TOKEN_FILE="/absolute/path/to/tokens" \
+mcp/install.sh --run
+```
+
+See [mcp/README.md](mcp/README.md) for tool and token details.
+
+## Production
+
+Production keeps durable, rebuildable, and disposable data separate:
+
+```text
+/srv/brain/store     durable OKF Markdown + git
+/srv/brain/tokens    durable bearer identities
+/srv/brain/runtime   rebuildable SQLite/state/telemetry
+/srv/brain/cache     disposable caches
+```
+
+The Compose service binds only to `127.0.0.1:8085`; nginx owns the public MCP
+route. The deployment contract neither mounts nor depends on Openship Redis.
+See [deployment/README.md](deployment/README.md). A real VPS deployment is not
+proven merely by local tests or a running container: both health probes, index
+verification, and the authenticated public-route smoke test must pass.

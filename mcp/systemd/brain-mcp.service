@@ -10,17 +10,19 @@
 # secret-free and portable. Create /etc/brain-mcp.env (chmod 600, owned by the
 # service user) with at least:
 #
-#   BRAIN_VAULT_PATH=/srv/brain/vault
-#   BRAIN_MCP_TOKENS=token-for-alice:alice,token-for-bob:bob
+#   BRAIN_STORE_PATH=/srv/brain/store
+#   BRAIN_RUNTIME_PATH=/srv/brain/runtime
+#   BRAIN_CACHE_PATH=/srv/brain/cache
+#   BRAIN_TOKEN_FILE=/srv/brain/tokens
 #   BRAIN_MCP_HOST=127.0.0.1
 #   BRAIN_MCP_PORT=8080
 #
-# BRAIN_MCP_TOKENS maps bearer tokens to author identities; the server rejects
+# BRAIN_TOKEN_FILE maps bearer tokens to caller identities; the server rejects
 # any request whose Authorization: Bearer <token> is not listed. Keep the host
 # on loopback and put a TLS-terminating reverse proxy in front for public access.
 
 [Unit]
-Description=Brain OS MCP server (OKF vault gateway)
+Description=Brain OS MCP server (OKF Brain Store gateway)
 Documentation=file:///srv/brain/brain-os-starter/mcp/README.md
 After=network-online.target
 Wants=network-online.target
@@ -30,7 +32,7 @@ Type=simple
 
 # Dedicated, unprivileged service account — create it once with:
 #   sudo useradd --system --home /srv/brain --shell /usr/sbin/nologin brainmcp
-# and make sure it owns the vault and the venv.
+# and make sure it owns the Store/runtime paths and the venv.
 User=brainmcp
 Group=brainmcp
 
@@ -42,7 +44,7 @@ EnvironmentFile=/etc/brain-mcp.env
 
 # Run the server script from the project virtualenv. server.py puts its own
 # directory on sys.path (so it is NOT imported as a package named "mcp", which
-# would shadow the PyPI `mcp` SDK). It reads BRAIN_VAULT_PATH, BRAIN_MCP_TOKENS,
+# would shadow the PyPI `mcp` SDK). It reads BRAIN_STORE_PATH, BRAIN_TOKEN_FILE,
 # BRAIN_MCP_HOST and BRAIN_MCP_PORT from the environment file above.
 # mcp/install.sh --systemd fills these paths in for you.
 ExecStart=/srv/brain/brain-os-starter/.venv/bin/python /srv/brain/brain-os-starter/mcp/server.py
@@ -50,12 +52,13 @@ ExecStart=/srv/brain/brain-os-starter/.venv/bin/python /srv/brain/brain-os-start
 Restart=on-failure
 RestartSec=5
 
-# Hardening — the server only ever needs to read/write the vault directory.
+# Hardening — durable Store + rebuildable runtime/cache are explicit.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/srv/brain/vault
+ReadWritePaths=/srv/brain/store /srv/brain/runtime /srv/brain/cache
+ReadOnlyPaths=/srv/brain/tokens
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX

@@ -21,7 +21,8 @@
 # first, then lessons/concepts in score order until the budget is exhausted;
 # the last part is truncated to fit.
 #
-# Configure the vault location with the BRAIN_VAULT_PATH environment variable.
+# Configure the Store with BRAIN_STORE_PATH. BRAIN_VAULT_PATH remains a
+# deprecated compatibility alias.
 # Register in ~/.claude/settings.json under hooks.UserPromptSubmit — see
 # settings.example.json for the two-hook (static once:true + retrieval) layout.
 # scripts/install.sh does this for you.
@@ -30,7 +31,9 @@ import os
 import re
 import sys
 
-BRAIN = os.environ.get("BRAIN_VAULT_PATH", os.path.expanduser("~/Brain"))
+BRAIN = os.environ.get("BRAIN_STORE_PATH") or os.environ.get(
+    "BRAIN_VAULT_PATH", os.path.expanduser("~/Brain")
+)
 DASHBOARD = os.path.join(BRAIN, "Dashboard.md")
 INDEX = os.path.join(BRAIN, "Lessons", "INDEX.md")
 MAX_LESSONS = 2
@@ -181,6 +184,33 @@ def assemble(parts, cap):
     return "\n\n".join(out)
 
 
+def runtime_context(prompt):
+    """Use the indexed retrieval core when it is available.
+
+    The older lexical staging functions remain as a compatibility fallback for
+    copied hooks whose installation predates the runtime package.
+    """
+    try:
+        from runtime.retrieval import RetrievalIndex
+        index = RetrievalIndex(BRAIN)
+        status = index.status()
+        if not status["chunk_count"] or status["stale_file_count"]:
+            index.refresh()
+        result = index.context(
+            prompt, agent="claude-code", mode="compact",
+            max_context_units=max(64, MAX_CONTEXT_CHARS // 4),
+            caller_id="local-hook",
+        )
+        parts = []
+        for item in result["fingerprints"]:
+            parts.append("--- Brain Fingerprint: %s ---\n%s" % (item["ref"], item["content"]))
+        for item in result["context_chunks"]:
+            parts.append("--- Brain Context: %s ---\n%s" % (item["ref"], item["content"]))
+        return assemble(parts, MAX_CONTEXT_CHARS)
+    except Exception:
+        return ""
+
+
 def main():
     try:
         data = json.load(sys.stdin)
@@ -193,17 +223,21 @@ def main():
     if mode in ("", "static"):
         parts.append("--- Brain Dashboard ---\n" + read(DASHBOARD))
     if mode in ("", "retrieval"):
-        pwords = prompt_words(prompt)
-        lessons = matched_lessons(prompt)
-        for target, path in lessons:
-            chunk = stage_lesson(path, pwords)
-            if chunk:
-                parts.append("--- Lesson: %s ---\n%s" % (target, chunk))
-        for path in matched_concepts(prompt, {p for _, p in lessons}):
-            rel = os.path.relpath(path, BRAIN)
-            body = read(path)[:CONCEPT_CHARS]
-            if body:
-                parts.append("--- Concept: %s ---\n%s" % (rel, body))
+        indexed = runtime_context(prompt)
+        if indexed:
+            parts.append(indexed)
+        else:
+            pwords = prompt_words(prompt)
+            lessons = matched_lessons(prompt)
+            for target, path in lessons:
+                chunk = stage_lesson(path, pwords)
+                if chunk:
+                    parts.append("--- Lesson: %s ---\n%s" % (target, chunk))
+            for path in matched_concepts(prompt, {p for _, p in lessons}):
+                rel = os.path.relpath(path, BRAIN)
+                body = read(path)[:CONCEPT_CHARS]
+                if body:
+                    parts.append("--- Concept: %s ---\n%s" % (rel, body))
 
     ctx = assemble(parts, MAX_CONTEXT_CHARS)
     print(json.dumps({

@@ -1,149 +1,92 @@
-# Architecture
+# Brain OS Architecture
 
-How the whole system fits together — the layers, the data flow, and the file map.
-Read this once to understand the design; the operational rules live in
-`vault-template/PROTOCOL.md`.
+## Invariant
 
-## 1. The core idea
+Brain OS is deterministic shared-memory infrastructure. It must not invoke an
+LLM, embedding model, model reranker, model summarizer, or AI provider—directly
+or behind MCP. Many independent external agents can use the same Brain Store;
+the Store format does not depend on the calling model.
 
-An agent's context window is small and expensive; its potential memory is large.
-The system's whole job is to keep those two facts from colliding:
+## Authority and projections
 
-> **A big Brain is not a big context.**
-
-So knowledge is stored broadly and durably (markdown files), but retrieval is
-progressive and budgeted: index → frontmatter → matching heading → full concept,
-and only as far as a relevance score justifies. Nothing is loaded "just in case".
-
-## 2. Three layers
-
-### Durable Brain — the vault
-Human-readable markdown, git-tracked, one concept per file, each with OKF
-frontmatter (`type`, `description`, `tags`, `timestamp`). This is the part you
-open in Obsidian. It holds lessons, skills, knowledge, projects, hypotheses, and
-session handoffs. It does **not** hold transient runtime state.
-
-### Runtime Mind — `~/.brain-runtime/`
-Per-session cognition: working memory, active goals, memory activations, candidate
-options, simulations, eligibility traces, synaptic weights. It lives outside the
-repo (no git noise, no forced index/log updates) and is rebuildable from an
-append-only event ledger + snapshot. The runnable mechanics are in
-`vault-template/AI/Runtime/brain_engine.py` (stdlib-only, 5-phase, self-testing).
-
-### Offline Consolidation — the learning loop
-At session end, `brain-manager` replays the session, distills at most a handful of
-action-changing lessons, updates synaptic weights, suppresses failed paths, prunes
-dead ones, and writes the handoff. This is how the memory gets *better*, not just
-*bigger*.
-
-## 3. What happens on every prompt
-
-```
-you type a prompt
-      │
-      ▼
-UserPromptSubmit hooks fire (once per session):
-  rules.py         → injects "--- Working Rules ---"  (what's allowed)
-  brain_context.py → injects "--- Brain Dashboard ---" (always)
-                   + the best-matching distilled Lessons (keyword match vs Lessons/INDEX.md)
-                   + the single best-matching concept (frontmatter scan)
-      │
-      ▼
-the agent works, using reasoning-core discipline (DoD → recon → slice →
-next-action loop → verification gate)
-      │
-      ▼
-at session end: "run a retrospective" → brain-manager consolidates
-      → session handoff + Dashboard + Sessions/index + log  (the "triple update")
+```text
+brain-store/ OKF Markdown (durable authority)
+        |
+        v
+line-state parser -> typed structural chunks -> SQLite FTS5 + sparse features
+        |                                      (rebuildable projection)
+        v
+filter -> BM25 candidates -> hybrid rerank -> redundancy-aware packing
+        |                                      (deterministic computation)
+        v
+fingerprints + compact chunks + refs + receipt delta -> external agent
 ```
 
-The hook is the load-bearing automation. `brain_context.py` depends on two file
-names existing: `Dashboard.md` (injected verbatim) and `Lessons/INDEX.md` (parsed
-for keyword lines of the form `- [[target]] — kw1, kw2`). Don't rename those.
+Runtime databases never become a competing metadata authority. Every indexed
+row carries source hashes and parser/chunker/BrainVector generations. Deleting
+the runtime and cache directories may affect latency but cannot destroy durable
+knowledge.
 
-## 4. The reasoning + rules + learning stack
+## Retrieval pipeline
 
-- **reasoning-core** (`skills/reasoning-core/SKILL.md`) — HOW to work on any hard
-  task: write a Definition of Done first, recon before planning, build the smallest
-  end-to-end slice, run the next-action loop after every step, pass a verification
-  gate before claiming "done", and capture lessons. Domain-agnostic.
-- **working-rules** (`rules/working-rules.md`) — WHAT is allowed: approval gates for
-  irreversible actions, secret hygiene, test ordering, token economy, memory
-  discipline. Edit this to fit your team.
-- **learning loop** (PROTOCOL §3) — Session → Lesson → (useful in 2+ tasks) → a
-  promoted heuristic or Skill. Invalidated entries are suppressed/archived, not
-  deleted. Pruning is maintenance, not loss.
+The parser recognizes OKF frontmatter, headings, paragraphs, lists, tables,
+fenced code, wiki/Markdown links, and technical identifiers. Chunk boundaries
+follow structure first and use size only as a fallback; code blocks and tables
+remain intact.
 
-## 5. The Living Brain cognitive layer (`vault-template/AI/`)
+FTS5/BM25 produces a bounded candidate set. BrainVector uses normalized words,
+exact technical identifiers, camel/snake/kebab/path/API/version subtokens,
+metadata, and path/heading signals. Sparse cosine runs only over FTS candidates.
 
-This is the ambitious, optional-to-engage layer: a set of policy files describing a
-full cognitive loop, plus a runnable engine implementing the quantitative parts.
+Hybrid scoring exposes each component:
 
-- `AI/Cognition/` — the prose architecture: `perception`, `attention-and-salience`,
-  `global-workspace`, `goal-system`, `decision-policy`, `future-simulation`,
-  `world-model`, `self-model`, `metacognition`, `offline-consolidation`, tied
-  together by `cognitive-architecture`.
-- `AI/Runtime/` — schemas for the runtime store (`event`, `state`,
-  `decision-episode`) + `runtime-contract` + `brain_engine.py`.
-- `AI/Memory/` — `synaptic-policy` (weights, activation formula, thresholds),
-  `memory-types` (node/synapse graph), `consolidation-policy` (distillation), and
-  `model_reasoning_memory` (cross-session heuristics + task log).
+- lexical relevance;
+- sparse similarity;
+- OKF metadata;
+- project/scope and agent fit;
+- explicit graph relations;
+- valid fingerprint fit;
+- verified usage;
+- redundancy and scope-mismatch penalties.
 
-The engine (`brain_engine.py`) makes the numbers real and testable: an activation
-score with progressive-retrieval thresholds, decision episodes with prediction
-error, synaptic weight updates gated by eligibility and independence, and
-suppression/pruning. Run `python3 brain_engine.py` for a 5/5 self-test. It is
-**not** wired to any hook — it's the substrate you build session tooling on, and
-running it changes nothing about a live session by itself.
+Context packing selects marginal value per `context_units`. These units are
+provider-independent estimates backed by character, word, and byte counts—not
+claims about exact provider tokens.
 
-## 6. Optional: the MCP server as a vault gateway
+## Fingerprints and receipts
 
-Everything above assumes the session hooks reading a local vault. `mcp/` adds an
-**optional** gateway onto the Durable Brain layer for remote or multi-client
-access — one central vault, many callers — without changing anything for a purely
-local agent. It exposes the same OKF vault as MCP tools: read tools
-(`get_dashboard`, `get_concept`, `search`, …) are open and side-effect-free,
-while writes go through the gated pipeline (single-writer lock →
-frontmatter validation → secret gate → edit → triple update → authored git
-commit) and there is deliberately no delete tool. This preserves the boundaries
-from §8: single writer, vault as source of truth, no live sync. It runs on
-`fastmcp` over HTTP with bearer-token auth; the stdlib-only `core.py` holds the
-logic and is testable on its own. Details in `mcp/README.md`.
+Deterministic fingerprints summarize metadata, headings, identifiers, links,
+constraints, and source hashes. Curated fingerprints are authored durable
+knowledge and take precedence; the runtime never silently overwrites them.
 
-## 7. File map
+Context receipts record exact chunk/fingerprint hashes per caller, agent, and
+handle. A receipt from one caller is never used to suppress context for another.
+`brain_continue` returns content-version deltas, while `brain_expand` moves from
+fingerprint to section, adjacent sections, or an explicitly requested full
+concept.
 
-```
-brain-os-starter/
-├── README.md               ← start here
-├── INSTALL.md              ← setup on a new machine
-├── ARCHITECTURE.md         ← this file
-├── system-prompt.md        ← system prompt for API/SDK agents
-├── settings.example.json   ← reference hook wiring
-├── hooks/
-│   ├── brain_context.py    ← injects Dashboard + lessons + concept (needs BRAIN_VAULT_PATH)
-│   └── rules.py            ← injects working-rules.md
-├── rules/working-rules.md
-├── skills/reasoning-core/SKILL.md
-├── agents/{brain-manager,context-builder}.md
-├── okf/okf-spec-v0.1.md
-├── scripts/{new_vault.sh, install.sh}
-└── vault-template/         ← the Brain skeleton (copied to your vault)
-    ├── Dashboard.md  index.md  PROTOCOL.md  log.md  Tasks.md  REFERENCE.md
-    ├── Sessions/     (index + session-template)
-    ├── Lessons/      (INDEX + process/ + data/)
-    ├── Skills/  Knowledge/  Agents/  Projects/  Hypotheses/
-    └── AI/
-        ├── Cognition/  (11 modules + index)
-        ├── Runtime/    (README, 4 schemas, brain_engine.py)
-        ├── Memory/     (synaptic-policy, memory-types, consolidation-policy, model_reasoning_memory)
-        └── Skills/reasoning-core/SKILL.md   (canonical copy in the vault)
-```
+## Learning boundary
 
-## 8. Deliberate boundaries (v1)
+The runtime may derive structured Insights from observable telemetry—retrievals,
+explicit useful refs, verified outcomes, or repeated hot paths. It does not
+perform semantic rewriting. An external agent or human promotes an Insight to a
+Lesson or Skill through the normal approval/write pipeline. Hidden reasoning or
+chain-of-thought is never stored.
 
-- **No bidirectional sync.** The vault is the single source of truth; distribute it
-  as a git repo or a tarball, not a live-synced drive.
-- **Single writer.** Only the main session writes to the Brain. Sub-agents are
-  read-only — they return findings, the main session records them.
-- **The runtime is disposable.** Anything in `~/.brain-runtime/` can be deleted; the
-  Durable Brain is what matters and what you back up.
+## Runtime isolation
+
+Globally shared state includes parser/index caches, chunks, sparse features,
+fingerprints, source hashes, and aggregate retrieval statistics. Caller/session
+state includes handles, known hashes, active sessions/tasks, and receipts.
+
+Production maps these classes to `/srv/brain/store`, `/srv/brain/runtime`, and
+`/srv/brain/cache`. The MCP container is loopback-only behind nginx and
+BearerGate. Openship deploys the Compose service with no managed public endpoint;
+its Redis and admin-auth configuration are outside Brain OS authority.
+
+## Legacy cognitive material
+
+The earlier Living Brain prose and deterministic state engine were moved out of
+the Store to `cognitive-spec/legacy/` and `runtime/state/living-brain/`. They are
+not prerequisites for retrieval and cannot introduce model/provider calls. New
+work prioritizes verified retrieval quality and context reduction.

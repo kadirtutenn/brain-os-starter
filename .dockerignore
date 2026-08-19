@@ -1,0 +1,9 @@
+.git
+.venv
+__pycache__
+.pytest_cache
+*.pyc
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+brain-os-retrieval-core-with-vps-deployment.md

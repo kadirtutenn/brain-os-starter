@@ -24,6 +24,16 @@ import os
 import re
 import subprocess
 import tempfile
+import sys
+
+# Keep the stdlib-only retrieval runtime importable when this file is executed
+# from mcp/server.py (whose script directory would otherwise be the only local
+# import root).
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from runtime.retrieval import RetrievalIndex
 
 
 # --------------------------------------------------------------------------- #
@@ -84,12 +94,21 @@ def _relid(vault, path):
     return os.path.relpath(path, vault).replace(os.sep, "/")
 
 
+def _safe_join(root, *parts):
+    """Join inside ``root`` and reject traversal/symlink escapes."""
+    base = os.path.realpath(os.path.abspath(root))
+    target = os.path.realpath(os.path.join(base, *parts))
+    if os.path.commonpath([base, target]) != base:
+        raise OKFValidationError("path escapes Brain Store")
+    return target
+
+
 def _resolve(vault, concept_id):
     """Map a concept id (with or without .md) to an absolute path."""
     cid = concept_id.replace("\\", "/").lstrip("/")
     if not cid.endswith(".md"):
         cid += ".md"
-    return os.path.join(vault, *cid.split("/"))
+    return _safe_join(vault, *cid.split("/"))
 
 
 # --------------------------------------------------------------------------- #
@@ -199,7 +218,7 @@ def get_index(vault, path=""):
     Prefers an on-disk index.md / INDEX.md; otherwise generates a compact
     listing of the directory's markdown files and subdirectories.
     """
-    directory = os.path.join(vault, *path.split("/")) if path else vault
+    directory = _safe_join(vault, *path.split("/")) if path else os.path.realpath(vault)
     for name in ("index.md", "INDEX.md"):
         candidate = os.path.join(directory, name)
         if os.path.isfile(candidate):
@@ -318,6 +337,68 @@ def recent_changes(vault, n=10):
     """Return the last n non-empty lines of log.md."""
     lines = [ln for ln in _read(os.path.join(vault, "log.md")).splitlines() if ln.strip()]
     return lines[-n:]
+
+
+# --------------------------------------------------------------------------- #
+# HIGH-LEVEL DETERMINISTIC RETRIEVAL API
+# --------------------------------------------------------------------------- #
+def _retrieval(vault):
+    """Return the canonical rebuildable retrieval projection for ``vault``."""
+    runtime_root = os.environ.get("BRAIN_RUNTIME_PATH")
+    cache_root = os.environ.get("BRAIN_CACHE_PATH")
+    db_path = os.path.join(runtime_root, "retrieval.sqlite") if runtime_root else None
+    return RetrievalIndex(vault, db_path=db_path, cache_path=cache_root)
+
+
+def brain_context(
+    vault, query, project="", agent="", mode="compact", max_context_units=1200,
+    context_handle="", filters=None, caller_id="local",
+):
+    """Primary compact retrieval primitive used by external AI callers."""
+    index = _retrieval(vault)
+    status = index.status()
+    if status["stale_file_count"] or not status["chunk_count"]:
+        index.refresh()
+    return index.context(
+        query=query, project=project, agent=agent, mode=mode,
+        max_context_units=max_context_units, context_handle=context_handle,
+        filters=filters or {}, caller_id=caller_id,
+    )
+
+
+def brain_continue(
+    vault, context_handle, query, project="", agent="", mode="compact",
+    max_context_units=1200, filters=None, caller_id="local",
+):
+    """Continue a context receipt and return only content-version deltas."""
+    return brain_context(
+        vault, query, project, agent, mode, max_context_units,
+        context_handle, filters, caller_id,
+    )
+
+
+def brain_expand(
+    vault, ref, level="section", context_handle="", max_context_units=2400,
+    caller_id="local",
+):
+    """Progressively expand a fingerprint/chunk reference."""
+    return _retrieval(vault).expand(
+        ref=ref, level=level, context_handle=context_handle,
+        caller_id=caller_id, max_context_units=max_context_units,
+    )
+
+
+def brain_status(vault):
+    """Return compact Store/index readiness without private content."""
+    return _retrieval(vault).status()
+
+
+def brain_report_usage(vault, caller_id, useful_refs, verified=False, retrieval_run_id=""):
+    """Record explicit caller feedback for deterministic learning signals."""
+    return _retrieval(vault).report_usage(
+        caller_id=caller_id, useful_refs=useful_refs, verified=verified,
+        retrieval_run_id=retrieval_run_id,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -446,7 +527,9 @@ def new_lesson(vault, area, slug, content, keywords, author):
     with _writer_lock(vault):
         base = _lesson_kind(content)
         rel = "Lessons/%s/%s.md" % (area, base)
-        path = os.path.join(vault, "Lessons", area, base + ".md")
+        if not re.match(r"^[A-Za-z0-9_-]+$", area or ""):
+            raise OKFValidationError("invalid lesson area")
+        path = _safe_join(vault, "Lessons", area, base + ".md")
         if not os.path.isfile(path):
             raise OKFValidationError("lesson file does not exist: %s" % rel)
 
@@ -603,6 +686,8 @@ def approve_proposal(vault, proposal_id, is_admin):
         raise AuthzError("admin privilege required to approve a rule proposal")
     with _writer_lock(vault):
         pid = proposal_id[:-3] if proposal_id.endswith(".md") else proposal_id
+        if not re.match(r"^proposal-[a-f0-9]{8}$", pid):
+            raise OKFValidationError("invalid proposal id")
         ppath = os.path.join(vault, "mcp_proposals", pid + ".md")
         if not os.path.isfile(ppath):
             raise OKFValidationError("no such proposal: %s" % pid)

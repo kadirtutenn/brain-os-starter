@@ -1,123 +1,77 @@
-# Install — Brain OS on a new machine, for a new user
+# Install Brain OS
 
-This sets up the whole system for one person on one machine. It is idempotent:
-re-running is safe.
+## Local prerequisites
 
-## Prerequisites
+- Python 3 with SQLite FTS5 support;
+- git for durable Store history;
+- Obsidian only if you want a visual editor/graph;
+- FastMCP dependencies only when running the optional network server.
 
-- **Python 3** (stdlib only — no packages to install). Check: `python3 --version`.
-- **Claude Code** installed, so `~/.claude/` exists (or will after first run). The
-  installer creates `~/.claude/hooks`, `~/.claude/skills`, `~/.claude/agents` as needed.
-- **Obsidian** (optional but recommended) for the graph view of the vault.
-- **git** (optional) if you want to version the vault.
-
-## Paths this system uses
-
-- **Vault** — where your Brain lives. You choose this (e.g. `~/Brain`). Set it as
-  `BRAIN_VAULT_PATH`; the hook reads that env var.
-- **`~/.claude/`** — Claude Code config home (`CLAUDE_DIR`, override for a sandbox).
-- **`~/.brain-runtime/`** — the runtime store for the Living Brain engine. Created
-  on demand; never committed. Override with `BRAIN_RUNTIME`.
-
-## Step 1 — get the vault
-
-Option A (fresh vault from the template):
+## Create and index a Store
 
 ```sh
-./scripts/new_vault.sh "$HOME/Brain"
+./scripts/new_store.sh "$HOME/Brain"
+BRAIN_STORE_PATH="$HOME/Brain" ./brain index rebuild
+BRAIN_STORE_PATH="$HOME/Brain" ./brain index verify
 ```
 
-Option B (you already have a distributed bundle): just note its path.
+The Store is Markdown. The default rebuildable database is
+`~/.brain-runtime/retrieval.sqlite`; caches are separate SQLite files under
+`~/.brain-runtime/cache`.
 
-## Step 2 — run the installer
+## Install the local hook
 
 ```sh
-BRAIN_VAULT_PATH="$HOME/Brain" ./scripts/install.sh
+BRAIN_STORE_PATH="$HOME/Brain" ./scripts/install.sh
 ```
 
-What it does:
+The installer rewrites only documented placeholders in the selected Store,
+backs up Claude Code settings, copies the hook/skill/agents, and registers a
+hook command with this repo on `PYTHONPATH`. Indexed retrieval is used when the
+runtime package is available; the old lexical path remains only as a copied-hook
+compatibility fallback.
 
-1. Rewrites `{{BRAIN_ROOT}}` / `{{WORKSPACE_ROOT}}` / `{{CLAUDE_HOME}}` placeholders
-   in the vault to this machine's real paths.
-2. Copies `hooks/brain_context.py` into `~/.claude/hooks/` and registers it in
-   `settings.json` (with `BRAIN_VAULT_PATH` baked into the command).
-3. Registers `hooks/rules.py` (runs from this repo).
-4. Installs the `reasoning-core` skill into `~/.claude/skills/`.
-5. Installs the `brain-manager` and `context-builder` agents into `~/.claude/agents/`.
+`BRAIN_VAULT_PATH` is a deprecated compatibility alias. New configuration must
+use `BRAIN_STORE_PATH`.
 
-`settings.json` is backed up to `settings.json.bak-brain-install` first.
+## Run the optional MCP server
 
-## Step 3 — verify
+Create an out-of-band token file, permissioned for the service user:
 
-Open a new Claude Code session and send any prompt. The injected context should
-begin with:
-
-```
---- Brain Dashboard ---
---- Working Rules ---
+```text
+opaque-random-token:alice:user
+different-random-token:admin-user:admin
 ```
 
-Then run the engine self-test (optional, proves the runtime layer works):
+Then:
 
 ```sh
-python3 "$HOME/Brain/AI/Runtime/brain_engine.py"
-# expected: RESULT: ALL PHASES PASS (5/5)
+BRAIN_STORE_PATH="$HOME/Brain" \
+BRAIN_RUNTIME_PATH="$HOME/.brain-runtime" \
+BRAIN_CACHE_PATH="$HOME/.brain-runtime/cache" \
+BRAIN_TOKEN_FILE="/absolute/path/to/tokens" \
+mcp/install.sh --run
 ```
 
-Open `$HOME/Brain` as a vault in Obsidian to browse the graph.
+The token file is read on every verification, so caller additions/revocations
+do not require a server restart. Raw bearer values are not persisted in Store
+content or telemetry.
 
-## Manual setup (without the installer)
-
-If you prefer to wire it by hand, add two `UserPromptSubmit` hooks to
-`~/.claude/settings.json` — see `settings.example.json` for the exact shape:
-
-- `brain_context.py` with `BRAIN_VAULT_PATH` set to your vault.
-- `rules.py` from this repo.
-
-Then copy `skills/reasoning-core/` into `~/.claude/skills/` and `agents/*.md` into
-`~/.claude/agents/`.
-
-## Central vault + MCP server (optional)
-
-Everything above wires a *local* vault into one machine. If you instead want a
-single shared vault reachable by remote or multiple clients (a team on a VPS),
-run the optional MCP server in `mcp/`. It is independent of the hooks.
-
-Bring it up from the repo root:
+## Verify
 
 ```sh
-# local / foreground — installs a venv + deps, then runs it
-BRAIN_VAULT_PATH="$HOME/Brain" mcp/install.sh --run
-
-# VPS daemon — installs deps and registers + starts a systemd service
-sudo mcp/install.sh --systemd
+BRAIN_STORE_PATH="$HOME/Brain" ./brain index status
+BRAIN_STORE_PATH="$HOME/Brain" ./brain evaluate
 ```
 
-`mcp/install.sh` with no flag just prepares the virtualenv and dependencies.
-Configure tokens and the listener via the environment file / `BRAIN_MCP_TOKENS`
-as documented in `mcp/README.md`.
+For local development, run the unit/contract suite with `pytest -q`. Production
+verification additionally requires `/health/live`, `/health/ready`, an
+authenticated `brain_context` call through the public nginx route, and rejection
+of an unauthenticated MCP request.
 
-Then register the endpoint with any MCP client:
+## VPS
 
-```sh
-claude mcp add brain-mcp <url> --header "Authorization: Bearer <token>"
-```
-
-where `<url>` is the server endpoint (e.g. `https://brain.example.com/mcp`) and
-`<token>` is one of your configured bearer tokens. Full tool list, auth model,
-and deploy hardening: `mcp/README.md`.
-
-## Turning it off
-
-- Mute the rules injection for a session: `BRAIN_RULES_BYPASS=1` (rules stay in
-  force; only the reminder is silenced).
-- Fully disable: remove the two hook entries from `settings.json` (restore the
-  `.bak-brain-install` backup).
-
-## Using it day to day
-
-- Just work. The Dashboard and matched lessons ride along on every prompt.
-- To learn something durably: tell the agent to "run a retrospective" / "close the
-  session". `brain-manager` writes a session handoff, appends any lessons, and does
-  the triple update (Dashboard + index + log).
-- Read/write discipline lives in `vault-template/PROTOCOL.md` (copied into your vault).
+Use [deployment/README.md](deployment/README.md). Legacy `/srv/brain/vault` to
+`/srv/brain/store` migration is a separate explicit operation with a critical
+backup and compatibility symlink; the deploy command will not silently create
+two writable Stores.

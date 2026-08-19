@@ -41,7 +41,7 @@ Edit this file to fit your team; the structure below is a starting point.
 
 ## Memory & Learning
 12. Durable knowledge is written to the Brain (OKF v0.1; write rules live in the
-    vault root `PROTOCOL.md`). End of session: handoff + triple update
+    Brain Store root `PROTOCOL.md`). End of session: handoff + triple update
     (Sessions/index + Dashboard + log).
 13. Distillation pipeline: Session → Lesson → (useful in 2+ tasks) promote to
     heuristic/Skill. Invalidated records are deleted; pruning is maintenance, not loss.

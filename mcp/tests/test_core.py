@@ -10,7 +10,7 @@ import subprocess
 import pytest
 
 import core
-from conftest import FIXTURE_VAULT, count_files
+from conftest import FIXTURE_STORE, count_files
 
 
 # --------------------------------------------------------------------------- #
@@ -56,6 +56,13 @@ def test_get_concept_parses_frontmatter_and_body(vault):
     assert "Assemble a Workflow" in c["body"]
     # the frontmatter delimiters must not leak into the parsed body
     assert not c["body"].lstrip().startswith("---")
+
+
+def test_read_paths_cannot_escape_store(vault):
+    with pytest.raises(core.OKFValidationError):
+        core.get_concept(vault, "../../outside")
+    with pytest.raises(core.OKFValidationError):
+        core.get_index(vault, "../../")
 
 
 # --------------------------------------------------------------------------- #

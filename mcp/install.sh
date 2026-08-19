@@ -13,7 +13,8 @@
 # Environment:
 #   BRAIN_MCP_VENV   venv location            (default: <repo>/.venv)
 #   PYTHON           python interpreter        (default: python3)
-#   BRAIN_VAULT_PATH vault root (required for --run and to prefill --systemd env)
+#   BRAIN_STORE_PATH Brain Store (canonical; required for --run)
+#   BRAIN_VAULT_PATH deprecated compatibility alias
 #   BRAIN_MCP_HOST   bind host                 (default: 127.0.0.1)
 #   BRAIN_MCP_PORT   bind port                 (default: 8848)
 set -e
@@ -24,6 +25,7 @@ VENV="${BRAIN_MCP_VENV:-$REPO/.venv}"
 PYTHON="${PYTHON:-python3}"
 HOST="${BRAIN_MCP_HOST:-127.0.0.1}"
 PORT="${BRAIN_MCP_PORT:-8848}"
+STORE="${BRAIN_STORE_PATH:-${BRAIN_VAULT_PATH:-}}"
 
 # ---- 1. virtualenv + dependencies (idempotent) ------------------------------
 if [ ! -x "$VENV/bin/python" ]; then
@@ -39,10 +41,10 @@ RUN_CMD="$VENV/bin/python $REPO/mcp/server.py"
 
 case "$MODE" in
 --run)
-    [ -n "$BRAIN_VAULT_PATH" ] || { echo "ERROR: set BRAIN_VAULT_PATH to your vault root"; exit 1; }
-    [ -d "$BRAIN_VAULT_PATH" ] || { echo "ERROR: not a directory: $BRAIN_VAULT_PATH"; exit 1; }
-    echo "==> starting server on $HOST:$PORT (vault: $BRAIN_VAULT_PATH)"
-    exec env BRAIN_VAULT_PATH="$BRAIN_VAULT_PATH" BRAIN_MCP_HOST="$HOST" BRAIN_MCP_PORT="$PORT" $RUN_CMD
+    [ -n "$STORE" ] || { echo "ERROR: set BRAIN_STORE_PATH to your Brain Store"; exit 1; }
+    [ -d "$STORE" ] || { echo "ERROR: not a directory: $STORE"; exit 1; }
+    echo "==> starting server on $HOST:$PORT (store: $STORE)"
+    exec env BRAIN_STORE_PATH="$STORE" BRAIN_MCP_HOST="$HOST" BRAIN_MCP_PORT="$PORT" $RUN_CMD
     ;;
 --systemd)
     # Requires root. Writes an env template (never overwriting an existing one),
@@ -52,10 +54,12 @@ case "$MODE" in
     if [ ! -f "$ENV_FILE" ]; then
         echo "==> writing env template $ENV_FILE (edit it: set the vault path + real tokens)"
         cat > "$ENV_FILE" <<EOF
-BRAIN_VAULT_PATH=${BRAIN_VAULT_PATH:-/srv/brain/vault}
+BRAIN_STORE_PATH=${STORE:-/srv/brain/store}
+BRAIN_RUNTIME_PATH=/srv/brain/runtime
+BRAIN_CACHE_PATH=/srv/brain/cache
 # One entry per line is NOT used here; BRAIN_MCP_TOKENS points at a token FILE
 # (format "token:username:role"), see mcp/tokens.example. Keep it chmod 600.
-BRAIN_MCP_TOKENS=/etc/brain-mcp.tokens
+BRAIN_TOKEN_FILE=/srv/brain/tokens
 BRAIN_MCP_HOST=$HOST
 BRAIN_MCP_PORT=$PORT
 EOF
@@ -75,10 +79,10 @@ EOF
 "")
     echo
     echo "Dependencies installed. To run the server:"
-    echo "  BRAIN_VAULT_PATH=/path/to/your/Brain mcp/install.sh --run"
+    echo "  BRAIN_STORE_PATH=/path/to/your/Brain mcp/install.sh --run"
     echo "or start it directly:"
-    echo "  BRAIN_VAULT_PATH=/path/to/your/Brain $RUN_CMD"
-    echo "For a VPS daemon: sudo BRAIN_VAULT_PATH=/srv/brain/vault mcp/install.sh --systemd"
+    echo "  BRAIN_STORE_PATH=/path/to/your/Brain $RUN_CMD"
+    echo "For a VPS daemon: sudo BRAIN_STORE_PATH=/srv/brain/store mcp/install.sh --systemd"
     ;;
 *)
     echo "ERROR: unknown mode '$MODE' (use --run, --systemd, or no argument)"; exit 1

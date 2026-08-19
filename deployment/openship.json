@@ -1,0 +1,10 @@
+{
+  "name": "brain-mcp",
+  "deployTarget": "local",
+  "buildStrategy": "local",
+  "runtimeMode": "docker",
+  "publicEndpoints": [],
+  "serviceDeploymentMode": "services",
+  "composeFile": "deployment/compose.yml",
+  "services": ["brain-mcp"]
+}

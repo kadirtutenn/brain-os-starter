@@ -1,6 +1,6 @@
 """Shared pytest fixtures for the mcp/core.py test suite.
 
-Every write-path test runs against a throwaway copy of ``fixture_vault`` that is
+Every write-path test runs against a throwaway copy of ``fixture_store`` that is
 ``git init``-ed inside pytest's tmp dir, so commits made by core.py never touch
 the real repository.
 """
@@ -13,7 +13,7 @@ import pytest
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 MCP_DIR = os.path.dirname(TESTS_DIR)
-FIXTURE_VAULT = os.path.join(TESTS_DIR, "fixture_vault")
+FIXTURE_STORE = os.path.join(TESTS_DIR, "fixture_store")
 
 # Make ``import core`` resolve to mcp/core.py regardless of the invocation cwd.
 if MCP_DIR not in sys.path:
@@ -37,7 +37,7 @@ def vault(tmp_path):
     Yields the vault root as a ``str`` (the address type core.py expects).
     """
     dst = tmp_path / "vault"
-    shutil.copytree(FIXTURE_VAULT, dst)
+    shutil.copytree(FIXTURE_STORE, dst)
 
     _git(dst, "init", "-q")
     # A committer identity so core.py's ``git commit`` never fails; this is the

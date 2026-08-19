@@ -1,0 +1,27 @@
+[
+  {
+    "id": "reasoning-skill",
+    "query": "definition of done verification gate next action loop",
+    "agent": "codex",
+    "expected_refs": ["Skills/reasoning-core/SKILL.md", "Skills/index.md"],
+    "forbidden_refs": ["Insights/hypotheses.md"],
+    "max_context_units": 700
+  },
+  {
+    "id": "lesson-process",
+    "query": "stale plan root cause fix lesson",
+    "project": "",
+    "agent": "claude-code",
+    "expected_refs": ["Lessons/process/problems.md"],
+    "forbidden_refs": [],
+    "max_context_units": 500
+  },
+  {
+    "id": "session-handoff",
+    "query": "session handoff decision outcome insight",
+    "agent": "agent-sdk",
+    "expected_refs": ["Sessions/session-template.md"],
+    "forbidden_refs": [],
+    "max_context_units": 650
+  }
+]
