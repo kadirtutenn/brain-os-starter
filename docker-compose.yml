@@ -1,0 +1,40 @@
+services:
+  brain-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: "${BRAIN_IMAGE:-brain-os:local}"
+    restart: unless-stopped
+    user: "${BRAIN_UID:-10001}:${BRAIN_GID:-10001}"
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      BRAIN_STORE_PATH: /brain/store
+      BRAIN_RUNTIME_PATH: /brain/runtime
+      BRAIN_CACHE_PATH: /brain/cache
+      BRAIN_TOKEN_FILE: /brain/tokens
+      BRAIN_MCP_HOST: 0.0.0.0
+      BRAIN_MCP_PORT: "8085"
+    volumes:
+      - /srv/brain/store:/brain/store
+      - /srv/brain/runtime:/brain/runtime
+      - /srv/brain/cache:/brain/cache
+      - /srv/brain/tokens:/brain/tokens:ro
+    ports:
+      - "127.0.0.1:8085:8085"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8085/health/ready', timeout=3)"
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

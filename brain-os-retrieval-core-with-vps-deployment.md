@@ -2146,3 +2146,123 @@ no internal AI/model dependency exists
 
 The deployed architecture must remain recoverable from durable Brain Store data without any AI service.
 
+---
+
+# 78. Verified Production Evidence — 2026-08-21
+
+Status: **COMPLETE for the production criteria in Section 77**, with the
+installation-local Openship hardening patch retained as an explicit operational
+caveat.
+
+## 78.1 Live route and deployment
+
+```text
+public MCP route: https://brain.openskillsagent.com/mcp
+public readiness: HTTP 200
+unauthenticated MCP request: HTTP 401
+active Openship deployment: dep_QEEmMtYzZQpzBKR_
+active container image: sha256:a95f7ca3032589e4fa75abf17f59ae52faea79b65217153ed5b3b165a1af2118
+container state: running / healthy
+```
+
+The production service binds only to `127.0.0.1:8085`; nginx owns the TLS
+route. The container runs as `10001:10001`, with a read-only root filesystem,
+`cap_drop: ALL`, `no-new-privileges`, bounded `/tmp`, and read-only token
+mounting. No Brain Store directory is embedded in the active image.
+
+## 78.2 Durable Store and retrieval projection
+
+```text
+canonical Store: /srv/brain/store
+Store commit: c3ed656174af6a727bd0bfd775768747159b6a81
+Store worktree: clean
+files seen: 66
+retrieval chunks: 1229
+FTS chunks: 1229
+integrity: ok
+stale files: 0
+orphan chunks: 0
+```
+
+The retrieval index was refreshed and verified after the final gated content
+writes. It survived both a full VPS reboot and a controlled Docker restart.
+Redis remained a separate persistent Openship dependency and returned `PONG`
+after restart.
+
+## 78.3 Authenticated MCP evidence
+
+The public-route smoke test verified:
+
+```text
+unauthenticated brain_status rejected: true
+authenticated brain_status received: true
+authenticated brain_context received: true
+returned context bounded to max_context_units: true
+retrieval metrics present: true
+```
+
+Codex also successfully called the configured Brain MCP tools after bearer
+rotation and application restart. The VPS persists only a SHA-256 verifier;
+the raw caller credential is held in macOS Keychain and supplied to Codex
+through `BRAIN_MCP_TOKEN`.
+
+## 78.4 Gated knowledge maintenance
+
+Protected full-document changes now use a two-step path:
+
+```text
+propose_concept_update
+→ pending proposal artifact
+→ approve_proposal (admin only)
+→ protected target replacement + authored Git commit
+```
+
+Dashboard reconciliation was applied through proposal
+`proposal-4a306355`. The production Session handoff is:
+
+```text
+Sessions/2026-08-21-brain-os-production-deployment-security-hardening-and-reboot.md
+```
+
+`recent_changes` now reads newest-first activity, and the update log creates a
+new date block when the day changes.
+
+## 78.5 VPS security and operating system
+
+```text
+kernel: 5.15.0-190-generic
+reboot required: no
+UFW inbound allowlist: 22/tcp, 80/tcp, 443/tcp
+SSH password authentication: disabled
+SSH root access: key-only
+fail2ban sshd jail: active
+nginx config test: successful
+certbot timer: active
+backup file mode: 0600
+```
+
+All 17 initially pending standard packages and the three phased
+netplan/snapd packages were upgraded. Docker was restarted after the `runc`
+upgrade; Brain, Bugünlük, Redis, and Openship recovered through their restart
+policies and passed their relevant health checks.
+
+## 78.6 Recovery evidence
+
+A clean authenticated image is retained as:
+
+```text
+brain-os:rollback-clean-20260821
+sha256:53a71033183e6d0c4a19c3237caf082b4e74d7e30357a5d28379b1a8cbe4996c
+```
+
+Critical Store/token-verifier backups are stored under `/srv/brain/backups`
+with mode `0600`. Runtime SQLite remains rebuildable and is not required for
+durable recovery.
+
+## 78.7 Operational caveat
+
+Openship `0.1.11` required an installation-local runtime patch so advanced
+Docker hardening fields are honored. An Openship update may overwrite that
+patch. After every Openship upgrade, reapply the repository patch helper and
+revalidate container user, read-only rootfs, capabilities, security options,
+mount modes, loopback binding, authenticated MCP smoke, and Redis continuity.

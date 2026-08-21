@@ -11,7 +11,7 @@ from typing import Any
 from runtime.parser import Block, Document
 from runtime.retrieval.tokenize import searchable_terms
 
-CHUNKER_VERSION = "1.0.0"
+CHUNKER_VERSION = "1.1.0"
 SOFT_TARGET_UNITS = 240
 SOFT_MAX_UNITS = 450
 
@@ -100,11 +100,18 @@ def chunk_document(document: Document) -> list[Chunk]:
     if not blocks and document.body.strip():
         blocks = [Block("paragraph", document.body.strip(), 1, 1)]
     chunks: list[Chunk] = []
+    ref_occurrences: dict[str, int] = {}
     for ordinal, block in enumerate(blocks):
         content = block.text.strip()
         digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
         anchor = _slug(block.heading_path[-1] if block.heading_path else "root")
-        chunk_id = f"{concept_id}#{anchor}@{digest[:16]}"
+        base_ref = f"{concept_id}#{anchor}@{digest[:16]}"
+        occurrence = ref_occurrences.get(base_ref, 0) + 1
+        ref_occurrences[base_ref] = occurrence
+        # Repeated headings or boilerplate may legitimately produce identical
+        # semantic chunks in one concept. Preserve the original reference for
+        # the first occurrence and add a deterministic suffix only on collision.
+        chunk_id = base_ref if occurrence == 1 else f"{base_ref}~{occurrence}"
         metadata = {
             key: document.frontmatter.get(key)
             for key in ("type", "tags", "project", "scope", "status", "confidence", "authority", "description")

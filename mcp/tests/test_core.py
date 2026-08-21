@@ -65,6 +65,38 @@ def test_read_paths_cannot_escape_store(vault):
         core.get_index(vault, "../../")
 
 
+def test_recent_changes_returns_newest_activity_and_creates_current_date_block(vault, author):
+    today = core._today()
+    core.new_lesson(
+        vault,
+        area="demo",
+        slug="recent-order-one",
+        content="First recent activity.",
+        keywords=["recent", "one"],
+        author=author,
+    )
+    handoff = """---
+type: Session
+description: "Recent order fixture"
+tags: [test]
+timestamp: {today}
+---
+
+# {today} — Recent order fixture
+
+## Handoff
+Second recent activity.
+""".format(today=today)
+    session_rel = core.log_session(vault, handoff, author)
+
+    changes = core.recent_changes(vault, n=2)
+    assert session_rel in changes[0]
+    assert "recent-order-one" in changes[1]
+    with open(os.path.join(vault, "log.md"), encoding="utf-8") as handle:
+        log = handle.read()
+    assert "## " + today in log
+
+
 # --------------------------------------------------------------------------- #
 # new_lesson: append-only, never creates a file
 # --------------------------------------------------------------------------- #
@@ -149,6 +181,42 @@ def test_approve_proposal_requires_admin(vault, author):
     )
     with pytest.raises(core.AuthzError):
         core.approve_proposal(vault, proposal_id, is_admin=False)
+
+
+def test_protected_dashboard_update_requires_proposal_and_admin(vault, author):
+    dashboard_path = os.path.join(vault, "Dashboard.md")
+    original = open(dashboard_path, encoding="utf-8").read()
+    replacement = original.replace("Fresh", "Production")
+
+    proposal_id = core.propose_concept_update(
+        vault,
+        "Dashboard.md",
+        replacement,
+        "Reconcile the dashboard with verified production state.",
+        author,
+    )
+    assert open(dashboard_path, encoding="utf-8").read() == original
+
+    with pytest.raises(core.AuthzError):
+        core.approve_proposal(vault, proposal_id, is_admin=False)
+
+    applied = core.approve_proposal(
+        vault, proposal_id, is_admin=True, admin_author=author
+    )
+    assert applied == "Dashboard.md"
+    assert open(dashboard_path, encoding="utf-8").read() == replacement
+    proposal = open(
+        os.path.join(vault, "mcp_proposals", proposal_id + ".md"),
+        encoding="utf-8",
+    ).read()
+    assert "status: approved" in proposal
+
+
+def test_protected_concept_proposal_rejects_unprotected_target(vault, author):
+    with pytest.raises(core.AuthzError):
+        core.propose_concept_update(
+            vault, "Knowledge/sample.md", "replacement", "not protected", author
+        )
 
 
 # --------------------------------------------------------------------------- #

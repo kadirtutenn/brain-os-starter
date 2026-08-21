@@ -94,6 +94,17 @@ def test_chunker_is_structure_first_and_keeps_code_table_whole():
     assert all(chunk.content_hash in chunk.chunk_id or chunk.content_hash[:16] in chunk.chunk_id for chunk in chunks)
 
 
+def test_chunker_disambiguates_identical_chunks_in_one_concept():
+    document = parse_markdown(
+        "# Repeated\n\nSame text.\n\n# Repeated\n\nSame text.\n",
+        "Knowledge/repeated.md",
+    )
+    chunks = chunk_document(document)
+    assert len(chunks) == 2
+    assert len({chunk.chunk_id for chunk in chunks}) == 2
+    assert chunks[1].chunk_id == f"{chunks[0].chunk_id}~2"
+
+
 def test_rebuild_refresh_verify_and_generation_status(tmp_path):
     index = index_for(tmp_path)
     rebuilt = index.rebuild()
