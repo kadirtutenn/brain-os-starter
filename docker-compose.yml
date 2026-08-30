@@ -1,7 +1,7 @@
 services:
   brain-mcp:
     build:
-      context: ..
+      context: .
       dockerfile: Dockerfile
     image: "${BRAIN_IMAGE:-brain-os:local}"
     restart: unless-stopped

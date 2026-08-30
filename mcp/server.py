@@ -215,9 +215,20 @@ def new_rule(text: str, rationale: str) -> str:
 
 
 @mcp.tool
+def propose_concept_update(concept_id: str, replacement: str, rationale: str) -> str:
+    """Queue a full replacement for protected Dashboard.md or PROTOCOL.md."""
+    return core.propose_concept_update(
+        STORE, concept_id, replacement, rationale, author=_caller()
+    )
+
+
+@mcp.tool
 def approve_proposal(proposal_id: str) -> str:
     """Apply a queued proposal; requires the caller to hold the admin role."""
-    return core.approve_proposal(STORE, proposal_id, is_admin=_caller()["is_admin"])
+    caller = _caller()
+    return core.approve_proposal(
+        STORE, proposal_id, is_admin=caller["is_admin"], admin_author=caller
+    )
 
 
 # Health routes are operational probes, not MCP requests. They never reveal

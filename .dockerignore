@@ -6,4 +6,12 @@ __pycache__
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+brain-store
+.env
+.env.*
+tokens
+mcp/tokens
+backups
+*.tar.gz
+*.pem
 brain-os-retrieval-core-with-vps-deployment.md

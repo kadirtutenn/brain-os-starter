@@ -334,9 +334,10 @@ def find_lesson(vault, keyword, limit=10):
 
 
 def recent_changes(vault, n=10):
-    """Return the last n non-empty lines of log.md."""
-    lines = [ln for ln in _read(os.path.join(vault, "log.md")).splitlines() if ln.strip()]
-    return lines[-n:]
+    """Return newest activity entries from log.md, newest first."""
+    lines = _read(os.path.join(vault, "log.md")).splitlines()
+    activity = [ln for ln in lines if ln.lstrip().startswith("* **")]
+    return activity[:max(0, n)]
 
 
 # --------------------------------------------------------------------------- #
@@ -436,13 +437,22 @@ def _is_protected(concept_id):
 
 
 def _prepend_log_line(text, line):
-    """Insert a log line directly under the topmost `## date` heading."""
+    """Insert a log line under today's topmost date heading.
+
+    A fresh date block is created above the previous top block when the day
+    changes, preserving newest-first ordering for both humans and the
+    ``recent_changes`` API.
+    """
     lines = text.splitlines()
+    today_heading = "## " + _today()
     for i, ln in enumerate(lines):
         if ln.startswith("## "):
-            lines.insert(i + 1, line)
+            if ln == today_heading:
+                lines.insert(i + 1, line)
+            else:
+                lines[i:i] = [today_heading, line, ""]
             return "\n".join(lines) + "\n"
-    lines.append(line)
+    lines.extend(["", today_heading, line])
     return "\n".join(lines) + "\n"
 
 
@@ -674,14 +684,59 @@ def new_rule(vault, text, rationale, author):
         return pid
 
 
+def propose_concept_update(vault, concept_id, replacement, rationale, author):
+    """Queue a full replacement for a protected Dashboard/PROTOCOL concept.
+
+    The live target is never touched until an authenticated admin approves the
+    proposal. Rule changes continue to use ``new_rule`` so their append-only
+    semantics remain distinct from full-document replacement.
+    """
+    _require_author(author)
+    cid = concept_id.replace("\\", "/").lstrip("/")
+    if cid not in ("Dashboard.md", "PROTOCOL.md"):
+        raise AuthzError("concept replacement proposals are limited to Dashboard.md and PROTOCOL.md")
+    with _writer_lock(vault):
+        target_path = _resolve(vault, cid)
+        if not os.path.isfile(target_path):
+            raise OKFValidationError("no such protected concept: %s" % cid)
+        secret_gate(replacement + "\n" + rationale)
+        if cid == "PROTOCOL.md":
+            validate_frontmatter(replacement)
+        pid = "proposal-" + hashlib.sha1(
+            (cid + "|" + replacement + "|" + rationale).encode("utf-8")
+        ).hexdigest()[:8]
+        doc = ('---\n'
+               'type: Reference\n'
+               'description: "Queued protected concept proposal (%s)"\n'
+               'tags: [proposal, protected-concept]\n'
+               'timestamp: %s\n'
+               'status: pending\n'
+               'proposal_kind: concept_replace\n'
+               'target: %s\n'
+               'author: %s\n'
+               '---\n\n'
+               '## Rationale\n%s\n\n## Replacement\n%s\n'
+               % (pid, _today(), cid, author["name"], rationale.strip(),
+                  replacement.rstrip()))
+        validate_frontmatter(doc)
+        _write(os.path.join(vault, "mcp_proposals", pid + ".md"), doc)
+        _triple_update(
+            vault, None, None,
+            "* **Update**: Protected concept proposal %s enqueued for %s (pending approval)."
+            % (pid, cid),
+        )
+        _git_commit(vault, "brain: enqueue protected proposal %s" % pid, author)
+        return pid
+
+
 def _section(body, name):
     """Return the text under a `## name` heading in `body`, or ""."""
     m = re.search(r"(?ms)^##\s+%s\s*\n(.*?)(?=^##\s|\Z)" % re.escape(name), body)
     return m.group(1).strip() if m else ""
 
 
-def approve_proposal(vault, proposal_id, is_admin):
-    """Apply a queued rule proposal to rules/working-rules.md. Admin only."""
+def approve_proposal(vault, proposal_id, is_admin, admin_author=None):
+    """Apply a queued rule or protected-concept proposal. Admin only."""
     if not is_admin:
         raise AuthzError("admin privilege required to approve a rule proposal")
     with _writer_lock(vault):
@@ -694,18 +749,39 @@ def approve_proposal(vault, proposal_id, is_admin):
         pdoc = _read(ppath)
         fm, body = _parse_frontmatter(pdoc)
 
-        rules_file = os.path.join(vault, "rules", "working-rules.md")
-        if not os.path.isfile(rules_file):
-            raise OKFValidationError("rules/working-rules.md not found")
-        addition = "\n## %s\n%s\n\n_Rationale:_ %s\n" % (
-            pid, _section(body, "Rule"), _section(body, "Rationale"))
-        _write(rules_file, _read(rules_file).rstrip("\n") + "\n" + addition)
+        proposal_kind = fm.get("proposal_kind") or "rule"
+        if proposal_kind == "concept_replace":
+            target = (fm.get("target") or "").replace("\\", "/").lstrip("/")
+            if target not in ("Dashboard.md", "PROTOCOL.md"):
+                raise AuthzError("invalid protected proposal target")
+            marker = "## Replacement\n"
+            if marker not in body:
+                raise OKFValidationError("protected proposal replacement is missing")
+            replacement = body.split(marker, 1)[1].rstrip() + "\n"
+            secret_gate(replacement)
+            if target == "PROTOCOL.md":
+                validate_frontmatter(replacement)
+            _write(_resolve(vault, target), replacement)
+            applied_target = target
+            log_line = "* **Update**: Protected concept proposal %s approved and applied to %s." % (pid, target)
+        elif proposal_kind == "rule":
+            rules_file = os.path.join(vault, "rules", "working-rules.md")
+            if not os.path.isfile(rules_file):
+                raise OKFValidationError("rules/working-rules.md not found")
+            addition = "\n## %s\n%s\n\n_Rationale:_ %s\n" % (
+                pid, _section(body, "Rule"), _section(body, "Rationale"))
+            _write(rules_file, _read(rules_file).rstrip("\n") + "\n" + addition)
+            applied_target = "rules/working-rules.md"
+            log_line = "* **Update**: Rule proposal %s approved and applied." % pid
+        else:
+            raise OKFValidationError("unknown proposal kind: %s" % proposal_kind)
 
         _write(ppath, re.sub(r"(?m)^status:\s*pending\s*$", "status: approved", pdoc))
 
-        author = {"name": fm.get("author") or "admin",
-                  "email": (fm.get("author") or "admin") + "@example.com"}
-        _triple_update(vault, None, None,
-                       "* **Update**: Rule proposal %s approved and applied." % pid)
-        _git_commit(vault, "brain: approve rule proposal %s" % pid, author)
-        return "rules/working-rules.md"
+        author = admin_author or {
+            "name": fm.get("author") or "admin",
+            "email": (fm.get("author") or "admin") + "@example.com",
+        }
+        _triple_update(vault, None, None, log_line)
+        _git_commit(vault, "brain: approve proposal %s" % pid, author)
+        return applied_target

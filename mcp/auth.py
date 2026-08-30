@@ -1,19 +1,21 @@
 # auth.py — bearer-token authentication for the Brain MCP server.
 #
-# Tokens live in a plaintext file whose path comes from BRAIN_TOKEN_FILE.
+# Token verifiers live in a private file whose path comes from BRAIN_TOKEN_FILE.
 # BRAIN_MCP_TOKENS remains a deprecated compatibility alias. One credential per line:
 #
-#     <token>:<username>:<role>
+#     sha256$<hex-digest>:<username>:<role>
 #
 # where <role> is either "user" or "admin". Blank lines and lines starting
-# with "#" are ignored. See tokens.example for the on-disk format — never
-# commit real tokens.
+# with "#" are ignored. Legacy plaintext entries remain readable only for a
+# controlled migration and should be replaced immediately. See tokens.example
+# for the on-disk format — never commit real tokens or real digests.
 #
 # authenticate(bearer) maps a presented bearer credential to a caller
 # identity dict {"name", "email", "is_admin"} that the write tools pass on
 # to mcp.core as `author`. Unknown or malformed credentials raise AuthError.
 import os
 import hmac
+import hashlib
 
 VALID_ROLES = {"user", "admin"}
 DEFAULT_EMAIL_DOMAIN = "example.com"
@@ -42,7 +44,7 @@ def _strip_bearer(bearer):
 
 
 def load_tokens(path=None):
-    """Parse the tokens file into {token: (username, role)}.
+    """Parse the tokens file into {verifier: (username, role)}.
 
     Malformed lines and unknown roles are skipped rather than aborting the
     whole load, so one bad line cannot lock everyone out.
@@ -70,6 +72,21 @@ def load_tokens(path=None):
     return table
 
 
+def token_verifier(token):
+    """Return the non-reversible verifier persisted for a bearer token."""
+    return "sha256$" + hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _matches(candidate, token):
+    if candidate.startswith("sha256$"):
+        expected = candidate.removeprefix("sha256$")
+        if len(expected) != 64:
+            return False
+        return hmac.compare_digest(expected, hashlib.sha256(token.encode("utf-8")).hexdigest())
+    # Compatibility for one-way migrations from the original plaintext format.
+    return hmac.compare_digest(candidate, token)
+
+
 def authenticate(bearer, path=None):
     """Resolve a bearer credential to {"name", "email", "is_admin"}.
 
@@ -80,7 +97,7 @@ def authenticate(bearer, path=None):
     token = _strip_bearer(bearer)
     table = load_tokens(path)
     entry = next((value for candidate, value in table.items()
-                  if hmac.compare_digest(candidate, token)), None)
+                  if _matches(candidate, token)), None)
     if entry is None:
         raise AuthError("unknown token")
     username, role = entry
