@@ -63,6 +63,12 @@ brain_smoke() {
     fi
 }
 
+migrate_tokens() {
+    SRC="/srv/brain/secrets/tokens"
+    [ ! -f "$SRC" ] && return 0
+    python3 "$APP/deployment/hash-tokens.py" "$SRC" "$TOKENS" "$BRAIN_UID" "$BRAIN_GID"
+}
+
 preflight() {
     need docker
     need git
@@ -118,6 +124,7 @@ backup() {
 
 deploy() {
     bootstrap
+    migrate_tokens
     preflight
     redis_before="$(docker inspect --format '{{.State.StartedAt}}' openship-redis)"
     backup_path="$(backup)"
