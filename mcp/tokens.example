@@ -1,5 +1,5 @@
 # Brain MCP bearer tokens — copy to a private file and point
-# BRAIN_MCP_TOKENS at it. One credential per line:
+# BRAIN_TOKEN_FILE at it. One credential per line:
 #
 #     sha256$<hex-digest>:<username>:<role>       role in {user, admin}
 #

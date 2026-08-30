@@ -1,4 +1,4 @@
-Continue development of `kadirtutenn/brain-os-starter`.
+Continue development of `brain-os-starter`.
 
 The architecture has now been narrowed to its primary purpose.
 
