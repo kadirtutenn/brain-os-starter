@@ -12,7 +12,7 @@ MANIFEST="${1:?usage: openship-vps-adapter.sh deployment/openship.json}"
 OPENSHIP_BIN="${OPENSHIP_BIN:-/root/.bun/bin/openship}"
 PROJECT_ID="${OPENSHIP_PROJECT_ID:-proj_q34DOZe8Kkzlopmf}"
 APP_DIR="$(CDPATH= cd -- "$(dirname -- "$MANIFEST")/.." && pwd)"
-CUSTOM_DOMAIN="${OPENSHIP_CUSTOM_DOMAIN:-brain.openskillsagent.com}"
+CUSTOM_DOMAIN="${OPENSHIP_CUSTOM_DOMAIN:-}"
 CUSTOM_PORT="${OPENSHIP_CUSTOM_PORT:-8085}"
 HELPER="$APP_DIR/deployment/openship-folder-deploy.py"
 
@@ -20,6 +20,8 @@ HELPER="$APP_DIR/deployment/openship-folder-deploy.py"
 [ -f "$APP_DIR/docker-compose.yml" ] \
     || { echo "Root docker-compose.yml is required for Openship deployment" >&2; exit 1; }
 [ -f "$HELPER" ] || { echo "Openship folder helper is missing: $HELPER" >&2; exit 1; }
+[ -n "$CUSTOM_DOMAIN" ] \
+    || { echo "OPENSHIP_CUSTOM_DOMAIN is required (public domain is not stored in this repo)" >&2; exit 1; }
 
 python3 - "$MANIFEST" <<'PY'
 import json

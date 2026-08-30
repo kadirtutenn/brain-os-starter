@@ -17,7 +17,7 @@ TOKENS="${BRAIN_TOKEN_FILE:-$ROOT/tokens}"
 APP="${BRAIN_APP_PATH:-$ROOT/app}"
 COMPOSE="$APP/deployment/compose.yml"
 MANIFEST="$APP/deployment/openship.json"
-PUBLIC_URL="${BRAIN_PUBLIC_MCP_URL:-https://brain.openskillsagent.com/mcp}"
+PUBLIC_URL="${BRAIN_PUBLIC_MCP_URL:-}"
 HEALTH_BASE="${BRAIN_HEALTH_BASE_URL:-http://127.0.0.1:8085}"
 OPENSHIP_ADAPTER="${OPENSHIP_DEPLOY_ADAPTER:-}"
 BRAIN_RUNTIME_CONTAINER="${BRAIN_RUNTIME_CONTAINER:-}"
@@ -27,6 +27,10 @@ BRAIN_GID="${BRAIN_GID:-10001}"
 fail() { echo "ERROR: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"; }
 store_git() { git -c safe.directory="$STORE" -C "$STORE" "$@"; }
+
+# Runtime lock: this script only runs on the provisioned Brain VPS as root.
+[ "$(id -u)" = "0" ] || fail "deploy-brain.sh must run as root on the Brain VPS"
+[ -n "${BRAIN_ROOT:-}" ] || fail "BRAIN_ROOT must be set (deployment is locked to the provisioned VPS)"
 
 wait_http() {
     label="$1"
@@ -89,6 +93,7 @@ preflight() {
     [ -f "$COMPOSE" ] || fail "compose file missing: $COMPOSE"
     [ -f "$MANIFEST" ] || fail "Openship manifest missing: $MANIFEST"
     [ -n "${BRAIN_SMOKE_TOKEN:-}" ] || fail "BRAIN_SMOKE_TOKEN is required for authenticated readiness"
+    [ -n "$PUBLIC_URL" ] || fail "BRAIN_PUBLIC_MCP_URL is required"
     [ -n "$OPENSHIP_ADAPTER" ] && [ -x "$OPENSHIP_ADAPTER" ] || fail "OPENSHIP_DEPLOY_ADAPTER must name an executable adapter"
     docker inspect openship-redis >/dev/null 2>&1 || fail "openship-redis not found; refusing to alter Openship topology"
     curl --fail --silent --show-error "${OPENSHIP_HEALTH_URL:-http://127.0.0.1:3000/health}" >/dev/null \

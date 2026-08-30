@@ -1251,7 +1251,7 @@ The service must not bind directly to a public interface.
 External MCP traffic enters through:
 
 ```text
-https://brain.openskillsagent.com/mcp
+https://${BRAIN_PUBLIC_DOMAIN}/mcp
 ```
 
 Flow:
@@ -1261,7 +1261,7 @@ External Agent
       │
       │ HTTPS
       ▼
-brain.openskillsagent.com
+${BRAIN_PUBLIC_DOMAIN}
       │
       ▼
 nginx
@@ -1466,7 +1466,7 @@ Brain deployment automation must not modify Openship authentication policy as a 
 The production Brain endpoint remains:
 
 ```text
-https://brain.openskillsagent.com/mcp
+https://${BRAIN_PUBLIC_DOMAIN}/mcp
 ```
 
 External clients such as OpenCode connect using their own bearer token.
@@ -2157,7 +2157,7 @@ caveat.
 ## 78.1 Live route and deployment
 
 ```text
-public MCP route: https://brain.openskillsagent.com/mcp
+public MCP route: https://${BRAIN_PUBLIC_DOMAIN}/mcp
 public readiness: HTTP 200
 unauthenticated MCP request: HTTP 401
 active Openship deployment: dep_QEEmMtYzZQpzBKR_

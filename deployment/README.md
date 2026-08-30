@@ -2,9 +2,10 @@
 
 Production uses `/srv/brain/store` (durable), `/srv/brain/runtime`
 (rebuildable), and `/srv/brain/cache` (disposable). The Compose service binds
-only to `127.0.0.1:8085`; nginx owns the public
-`https://brain.openskillsagent.com/mcp` route. `openship-redis` is neither
-mounted nor referenced by Brain OS.
+only to `127.0.0.1:8085`; nginx owns the public MCP route, whose domain is
+supplied out of band via `BRAIN_PUBLIC_MCP_URL` (readiness/smoke) and
+`OPENSHIP_CUSTOM_DOMAIN` (adapter) and is intentionally not recorded in this
+repository. `openship-redis` is neither mounted nor referenced by Brain OS.
 
 `deploy-brain.sh` deliberately requires an installation-specific executable in
 `OPENSHIP_DEPLOY_ADAPTER`. The adapter receives `deployment/openship.json` and
@@ -18,14 +19,16 @@ without making durable data broadly writable.
 Run order on the VPS:
 
 ```sh
-sudo BRAIN_APP_PATH=/srv/brain/app \
+sudo BRAIN_ROOT=/srv/brain BRAIN_APP_PATH=/srv/brain/app \
+  BRAIN_PUBLIC_MCP_URL='<out-of-band public MCP URL>' \
   OPENSHIP_DEPLOY_ADAPTER=/usr/local/bin/openship-brain-deploy \
   /srv/brain/app/deployment/deploy-brain.sh --preflight
 
 # Only when migrating the legacy path, as a separate controlled action:
-sudo /srv/brain/app/deployment/deploy-brain.sh --migrate-store
+sudo BRAIN_ROOT=/srv/brain /srv/brain/app/deployment/deploy-brain.sh --migrate-store
 
-sudo BRAIN_SMOKE_TOKEN='<out-of-band token>' \
+sudo BRAIN_ROOT=/srv/brain BRAIN_SMOKE_TOKEN='<out-of-band token>' \
+  BRAIN_PUBLIC_MCP_URL='<out-of-band public MCP URL>' \
   OPENSHIP_DEPLOY_ADAPTER=/usr/local/bin/openship-brain-deploy \
   /srv/brain/app/deployment/deploy-brain.sh --deploy
 ```
@@ -36,8 +39,9 @@ Each deployment tags the previously running local image as a timestamped
 without changing Store data, tokens, nginx, or Openship Redis with:
 
 ```sh
-sudo BRAIN_ROLLBACK_IMAGE='brain-os:rollback-YYYYMMDDTHHMMSSZ' \
+sudo BRAIN_ROOT=/srv/brain BRAIN_ROLLBACK_IMAGE='brain-os:rollback-YYYYMMDDTHHMMSSZ' \
   BRAIN_SMOKE_TOKEN='<out-of-band token>' \
+  BRAIN_PUBLIC_MCP_URL='<out-of-band public MCP URL>' \
   /srv/brain/app/deployment/deploy-brain.sh --rollback
 ```
 
