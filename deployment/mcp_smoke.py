@@ -13,9 +13,12 @@ from fastmcp import Client
 
 
 async def main() -> int:
-    endpoint = os.environ.get("BRAIN_PUBLIC_MCP_URL", "https://brain.openskillsagent.com/mcp")
+    endpoint = os.environ.get("BRAIN_PUBLIC_MCP_URL", "")
     token = os.environ.get("BRAIN_SMOKE_TOKEN", "")
     query = os.environ.get("BRAIN_SMOKE_QUERY", "Brain OS retrieval status")
+    if not endpoint:
+        print(json.dumps({"ok": False, "error": "BRAIN_PUBLIC_MCP_URL is required"}))
+        return 2
     if not token:
         print(json.dumps({"ok": False, "error": "BRAIN_SMOKE_TOKEN is required"}))
         return 2
