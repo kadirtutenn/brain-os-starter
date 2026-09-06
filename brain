@@ -32,8 +32,15 @@ def main(argv: list[str] | None = None) -> int:
     context_parser.add_argument("--context-handle", default="")
     evaluate_parser = commands.add_parser("evaluate", help="run a golden retrieval dataset")
     evaluate_parser.add_argument("dataset", nargs="?", default="evaluation/retrieval-golden.json")
+    graph_parser = commands.add_parser("graph", help="inspect Markdown wikilink graph")
+    graph_parser.add_argument("action", choices=("verify", "report"))
     args = parser.parse_args(argv)
     paths = resolve_paths(args.store, args.runtime, args.cache)
+    if args.command == "graph":
+        from runtime.graph import inspect
+        result = inspect(paths.store)
+        _emit(result)
+        return 0 if result.get("ok", True) else 1
     index = RetrievalIndex(paths.store, paths.retrieval_db, paths.cache)
     if args.command == "index":
         result = getattr(index, args.action)()

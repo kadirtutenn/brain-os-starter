@@ -34,6 +34,21 @@ compatibility fallback.
 `BRAIN_VAULT_PATH` is a deprecated compatibility alias. New configuration must
 use `BRAIN_STORE_PATH`.
 
+The lifecycle capture hook can be registered for Claude Code's `SessionEnd` and
+`PreCompact` events. It writes bounded, redacted excerpts to
+`<BRAIN_STORE_PATH>/daily/YYYY-MM-DD.md`, deduplicates repeated events, and
+does not call an LLM. Add the `SessionEnd|PreCompact` block from
+`settings.example.json` to the relevant settings file.
+
+Wikilinks are supported by the parser and can be checked with:
+
+```sh
+BRAIN_STORE_PATH="$HOME/Brain" ./brain graph verify
+```
+
+Broken wikilinks are reported; orphaned nodes are informational because a
+concept may intentionally be reachable only through an index or external link.
+
 ## Run the optional MCP server
 
 Create an out-of-band token file, permissioned for the service user:

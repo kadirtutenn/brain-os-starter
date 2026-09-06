@@ -8,6 +8,8 @@ from runtime.chunking import chunk_document
 from runtime.parser import parse_markdown
 from runtime.retrieval import RetrievalIndex
 from runtime.retrieval.tokenize import normalize_token
+from runtime.graph import inspect as inspect_graph
+from hooks.session_capture import capture
 
 
 SAMPLE = """---
@@ -187,3 +189,32 @@ def test_separate_cache_files_and_no_model_dependencies(tmp_path):
     requirements = Path("mcp/requirements.txt").read_text(encoding="utf-8").lower()
     for forbidden in ("openai", "anthropic", "sentence-transformers", "torch"):
         assert forbidden not in requirements
+
+
+def test_wikilink_graph_reports_edges_broken_links_and_orphans(tmp_path):
+    store = tmp_path / "store"
+    (store / "Knowledge").mkdir(parents=True)
+    (store / "Knowledge" / "a.md").write_text(
+        "---\ntype: Knowledge\n---\n# A\nSee [[Knowledge/b]]. See [[missing]].\n",
+        encoding="utf-8",
+    )
+    (store / "Knowledge" / "b.md").write_text("---\ntype: Knowledge\n---\n# B\n", encoding="utf-8")
+    result = inspect_graph(store)
+    assert result["edge_count"] == 1
+    assert result["broken_wikilinks"] == [{"source": "Knowledge/a.md", "target": "missing"}]
+    assert result["ok"] is False
+
+
+def test_session_capture_is_redacted_and_idempotent(tmp_path):
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text(
+        '{"role":"user","message":{"role":"user","content":"token=abc123456789012345"}}\n',
+        encoding="utf-8",
+    )
+    event = {"hook_event_name": "SessionEnd", "session_id": "s1", "transcript_path": str(transcript)}
+    target = capture(event, str(tmp_path / "store"))
+    capture(event, str(tmp_path / "store"))
+    content = target.read_text(encoding="utf-8")
+    assert content.count("event_id:") == 1
+    assert "[REDACTED]" in content
+    assert "abc123456789012345" not in content

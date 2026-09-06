@@ -20,6 +20,16 @@
             "once": true
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "BRAIN_STORE_PATH=\"/ABSOLUTE/PATH/TO/YOUR/Brain\" python3 \"/ABSOLUTE/PATH/TO/brain-os-starter/hooks/session_capture.py\"",
+            "statusMessage": "Saving Brain session..."
+          }
+        ],
+        "matcher": "SessionEnd|PreCompact"
       }
     ]
   }

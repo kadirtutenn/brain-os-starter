@@ -14,8 +14,8 @@
 # What it does (all idempotent; settings.json is backed up first):
 #   1. Rewrites {{BRAIN_ROOT}} / {{WORKSPACE_ROOT}} / {{CLAUDE_HOME}} placeholders
 #      inside the Store to this machine's real paths.
-#   2. Installs the brain_context.py hook into CLAUDE_DIR/hooks/ and registers it
-#      in settings.json with BRAIN_STORE_PATH set.
+#   2. Installs the context and lifecycle hooks into CLAUDE_DIR/hooks/ and
+#      registers them in settings.json with BRAIN_STORE_PATH set.
 #   3. Registers the rules.py hook (runs from this repo).
 #   4. Installs the reasoning-core skill into CLAUDE_DIR/skills/.
 #   5. Installs the brain-manager and context-builder agents into CLAUDE_DIR/agents/.
@@ -59,6 +59,7 @@ PY
 echo "2/5 installing brain_context hook..."
 mkdir -p "$CLAUDE_DIR/hooks"
 cp "$REPO/hooks/brain_context.py" "$CLAUDE_DIR/hooks/brain_context.py"
+cp "$REPO/hooks/session_capture.py" "$CLAUDE_DIR/hooks/session_capture.py"
 
 echo "3/5 registering hooks in settings.json (backing up first)..."
 BRAIN_STORE_PATH="$BRAIN_STORE_PATH" CLAUDE_DIR="$CLAUDE_DIR" REPO="$REPO" python3 - <<'PY'
@@ -79,6 +80,12 @@ def ensure(cmd, msg):
 ensure('PYTHONPATH="%s" BRAIN_STORE_PATH="%s" python3 "%s/hooks/brain_context.py"' % (repo, brain, cdir),
        "Loading Brain...")
 ensure('python3 "%s/hooks/rules.py"' % repo, "Loading rules...")
+life = 'BRAIN_STORE_PATH="%s" python3 "%s/hooks/session_capture.py"' % (brain, cdir)
+for event in ("SessionEnd", "PreCompact"):
+    groups = d.setdefault("hooks", {}).setdefault(event, [])
+    if not any(life in h.get("command", "") for g in groups for h in g.get("hooks", [])):
+        groups.append({"hooks": [{"type": "command", "command": life,
+                                   "statusMessage": "Saving Brain session..."}]})
 json.dump(d, open(p, "w"), indent=2, ensure_ascii=False)
 print("   settings.json updated:", p)
 PY

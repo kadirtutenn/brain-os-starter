@@ -11,3 +11,7 @@ __pycache__/
 .trash/
 # settings backups created by install.sh
 *.bak-brain-install
+
+# Personal/local-only phone bridge; do not push to VPS/production.
+runtime/phone_links.py
+scripts/import_phone_files.py
